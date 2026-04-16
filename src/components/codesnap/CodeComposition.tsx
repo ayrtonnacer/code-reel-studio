@@ -100,6 +100,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   return (
     <AbsoluteFill style={bg.css}>
+      {config.audioDataUrl && (
+        <Audio
+          src={config.audioDataUrl}
+          volume={(f) => {
+            const fadeFrames = Math.max(1, Math.round(config.audioFadeOut * fps));
+            const fadeStart = durationInFrames - fadeFrames;
+            const fade =
+              f >= fadeStart
+                ? interpolate(f, [fadeStart, durationInFrames], [1, 0], {
+                    extrapolateLeft: "clamp",
+                    extrapolateRight: "clamp",
+                  })
+                : 1;
+            return config.audioVolume * fade;
+          }}
+        />
+      )}
+
       {/* Filename / handle bar at top */}
       <div
         style={{
@@ -142,6 +160,28 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           {config.brandHashtag}
         </div>
       </div>
+
+      {/* Optional title above the card */}
+      {config.showTitle && config.title.trim() && (
+        <div
+          style={{
+            position: "absolute",
+            top: 180,
+            left: 60,
+            right: 60,
+            zIndex: 15,
+            fontFamily: "'Archivo Black', system-ui, sans-serif",
+            fontSize: 64,
+            lineHeight: 1.05,
+            letterSpacing: "-0.03em",
+            color: "#fff",
+            textTransform: "uppercase",
+            textShadow: "4px 4px 0 #0a0a0a",
+          }}
+        >
+          {config.title}
+        </div>
+      )}
 
       {/* Code card */}
       <div
