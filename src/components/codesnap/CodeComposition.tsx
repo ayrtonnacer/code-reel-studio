@@ -69,8 +69,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   };
 
   // Render tokens broken across lines so line numbers align
-  const renderedLines: React.ReactNode[] = [];
-  let buffer: { text: string; type: string }[] = [];
+  type LineToken = { text: string; type: string };
+  const renderedLines: LineToken[][] = [];
+  let buffer: LineToken[] = [];
   for (const t of visibleTokens) {
     const parts = t.text.split("\n");
     parts.forEach((part, idx) => {
