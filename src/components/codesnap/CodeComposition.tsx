@@ -293,23 +293,25 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       </div>
 
       {/* Bottom signature */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 60,
-          left: 0,
-          right: 0,
-          textAlign: "center",
-          fontFamily: "'Archivo Black', system-ui, sans-serif",
-          color: "#fff",
-          fontSize: 32,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-          mixBlendMode: "difference",
-        }}
-      >
-        CODE · IN · MOTION
-      </div>
+      {config.showBottomText && config.bottomText.trim() && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 60,
+            left: 0,
+            right: 0,
+            textAlign: "center",
+            fontFamily: "'Archivo Black', system-ui, sans-serif",
+            color: "#fff",
+            fontSize: 32,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            mixBlendMode: "difference",
+          }}
+        >
+          {config.bottomText}
+        </div>
+      )}
     </AbsoluteFill>
   );
 };
