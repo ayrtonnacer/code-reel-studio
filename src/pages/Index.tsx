@@ -2,19 +2,26 @@ import { useState } from "react";
 import { CodeInput } from "@/components/codesnap/CodeInput";
 import { ConfigPanel } from "@/components/codesnap/ConfigPanel";
 import { PreviewPlayer } from "@/components/codesnap/PreviewPlayer";
+import { ExportDialog } from "@/components/codesnap/ExportDialog";
 import { DEFAULT_CONFIG, type SnippetConfig } from "@/lib/codesnap-types";
 import { Film, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 
 const Index = () => {
   const [config, setConfig] = useState<SnippetConfig>(DEFAULT_CONFIG);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const update = (next: Partial<SnippetConfig>) =>
     setConfig((prev) => ({ ...prev, ...next }));
 
   return (
     <div className="min-h-screen bg-paper text-ink">
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        config={config}
+      />
+
       {/* Header */}
       <header className="brutal-border border-t-0 border-l-0 border-r-0 bg-paper sticky top-0 z-30">
         <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
@@ -33,19 +40,14 @@ const Index = () => {
           </div>
           <div className="hidden md:flex items-center gap-2">
             <span className="font-mono text-[11px] uppercase tracking-wider bg-voltage text-ink px-3 py-1 brutal-border">
-              v0.1 · Internal
+              v0.2 · Internal
             </span>
             <Button
               size="sm"
               className="brutal-border brutal-shadow-sm bg-ember text-white hover:bg-ember/90 font-mono uppercase rounded-none"
-              onClick={() =>
-                toast("Export coming in v2", {
-                  description:
-                    "WebM export via MediaRecorder is planned. For now, screen-record the preview.",
-                })
-              }
+              onClick={() => setExportOpen(true)}
             >
-              <Download className="mr-2 h-4 w-4" /> Export
+              <Download className="mr-2 h-4 w-4" /> Export MP4
             </Button>
           </div>
         </div>
