@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Audio } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
+import { buildBackgroundCss } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 
@@ -10,9 +11,12 @@ interface Props {
 
 export const CodeComposition: React.FC<Props> = ({ config }) => {
   const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const { fps, width, height, durationInFrames } = useVideoConfig();
   const theme = THEMES[config.theme];
-  const bg = BACKGROUNDS[config.background];
+  const bg =
+    config.background === "custom-gradient"
+      ? { css: buildBackgroundCss(config.customGradient) }
+      : BACKGROUNDS[config.background];
 
   const tokens = useMemo(
     () => tokenize(config.code, config.language),
