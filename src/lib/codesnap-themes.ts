@@ -141,4 +141,10 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
         "linear-gradient(135deg, #ff5722 0%, #ff5722 50%, #ffeb3b 50%, #ffeb3b 100%)",
     },
   },
+  "custom-gradient": {
+    // Resolved at render time from config.customGradient
+    css: {
+      background: "linear-gradient(135deg, #ff5722 0%, #1a1a1a 100%)",
+    },
+  },
 };
