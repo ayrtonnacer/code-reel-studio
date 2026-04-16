@@ -12,10 +12,14 @@ import {
 } from "@/components/ui/select";
 import type {
   BackgroundStyle,
+  GradientDirection,
   Language,
   SnippetConfig,
   Theme,
 } from "@/lib/codesnap-types";
+import { Music, Upload, X } from "lucide-react";
+import { useRef } from "react";
+import { toast } from "sonner";
 
 interface Props {
   config: SnippetConfig;
@@ -56,31 +60,68 @@ const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
   { value: "ink-grid", label: "Ink Grid" },
   { value: "paper-noise", label: "Paper Noise" },
   { value: "duotone-pop", label: "Duotone Pop" },
+  { value: "custom-gradient", label: "Custom Gradient" },
+];
+
+const DIRECTIONS: { value: GradientDirection; label: string }[] = [
+  { value: "135deg", label: "Diagonal ↘" },
+  { value: "45deg", label: "Diagonal ↗" },
+  { value: "to right", label: "Horizontal →" },
+  { value: "to bottom", label: "Vertical ↓" },
+  { value: "to bottom right", label: "Down-Right" },
+  { value: "to bottom left", label: "Down-Left" },
+  { value: "radial", label: "Radial Glow" },
 ];
 
 export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAudioFile = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Audio file too large", {
+        description: "Maximum 10MB per file.",
+      });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      onChange({
+        audioDataUrl: reader.result as string,
+        audioName: file.name,
+      });
+      toast.success("Music loaded", { description: file.name });
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <Tabs defaultValue="style" className="w-full">
       <TabsList
-        className="grid w-full grid-cols-3 brutal-border h-auto p-0 rounded-none bg-paper"
+        className="grid w-full grid-cols-4 brutal-border h-auto p-0 rounded-none bg-paper"
       >
         <TabsTrigger
           value="style"
-          className="font-display uppercase tracking-wide text-sm rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display uppercase tracking-wide text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Style
         </TabsTrigger>
         <TabsTrigger
           value="background"
-          className="font-display uppercase tracking-wide text-sm rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display uppercase tracking-wide text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Background
         </TabsTrigger>
         <TabsTrigger
-          value="animation"
-          className="font-display uppercase tracking-wide text-sm rounded-none py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          value="text"
+          className="font-display uppercase tracking-wide text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
-          Animation
+          Text
+        </TabsTrigger>
+        <TabsTrigger
+          value="animation"
+          className="font-display uppercase tracking-wide text-xs rounded-none py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+        >
+          Anim · Audio
         </TabsTrigger>
       </TabsList>
 
@@ -172,6 +213,71 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           </Select>
         </Field>
 
+        {config.background === "custom-gradient" && (
+          <div className="space-y-4 brutal-border bg-concrete p-4">
+            <Label className="font-mono text-xs uppercase tracking-wider">
+              Custom Gradient
+            </Label>
+            <div className="grid grid-cols-2 gap-3">
+              <ColorField
+                label="From"
+                value={config.customGradient.from}
+                onChange={(from) =>
+                  onChange({
+                    customGradient: { ...config.customGradient, from },
+                  })
+                }
+              />
+              <ColorField
+                label="To"
+                value={config.customGradient.to}
+                onChange={(to) =>
+                  onChange({
+                    customGradient: { ...config.customGradient, to },
+                  })
+                }
+              />
+            </div>
+            <Field label="Direction">
+              <Select
+                value={config.customGradient.direction}
+                onValueChange={(v) =>
+                  onChange({
+                    customGradient: {
+                      ...config.customGradient,
+                      direction: v as GradientDirection,
+                    },
+                  })
+                }
+              >
+                <SelectTrigger className="brutal-border rounded-none font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="brutal-border rounded-none">
+                  {DIRECTIONS.map((d) => (
+                    <SelectItem
+                      key={d.value}
+                      value={d.value}
+                      className="font-mono"
+                    >
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <div
+              className="h-16 brutal-border"
+              style={{
+                background:
+                  config.customGradient.direction === "radial"
+                    ? `radial-gradient(circle at 30% 20%, ${config.customGradient.from}, ${config.customGradient.to})`
+                    : `linear-gradient(${config.customGradient.direction}, ${config.customGradient.from}, ${config.customGradient.to})`,
+              }}
+            />
+          </div>
+        )}
+
         <Field label={`Padding · ${config.padding}px`}>
           <Slider
             value={[config.padding]}
@@ -181,6 +287,25 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             onValueChange={([v]) => onChange({ padding: v })}
           />
         </Field>
+      </TabsContent>
+
+      {/* TEXT */}
+      <TabsContent value="text" className="space-y-5 pt-5">
+        <ToggleRow
+          label="Show title above card"
+          checked={config.showTitle}
+          onChange={(v) => onChange({ showTitle: v })}
+        />
+        {config.showTitle && (
+          <Field label="Title">
+            <Input
+              value={config.title}
+              onChange={(e) => onChange({ title: e.target.value })}
+              className="font-mono brutal-border rounded-none"
+              placeholder="e.g. Quicksort in 7 lines"
+            />
+          </Field>
+        )}
 
         <Field label="Brand handle">
           <Input
@@ -196,9 +321,24 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             className="font-mono brutal-border rounded-none"
           />
         </Field>
+
+        <ToggleRow
+          label="Show bottom signature"
+          checked={config.showBottomText}
+          onChange={(v) => onChange({ showBottomText: v })}
+        />
+        {config.showBottomText && (
+          <Field label="Bottom text">
+            <Input
+              value={config.bottomText}
+              onChange={(e) => onChange({ bottomText: e.target.value })}
+              className="font-mono brutal-border rounded-none"
+            />
+          </Field>
+        )}
       </TabsContent>
 
-      {/* ANIMATION */}
+      {/* ANIMATION + AUDIO */}
       <TabsContent value="animation" className="space-y-5 pt-5">
         <Field label={`Typing speed · ${config.typingSpeed} chars/s`}>
           <Slider
@@ -232,6 +372,68 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           checked={config.showCursor}
           onChange={(v) => onChange({ showCursor: v })}
         />
+
+        {/* Audio block */}
+        <div className="brutal-border bg-concrete p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
+              <Music className="h-3 w-3" /> Background music
+            </Label>
+            {config.audioName && (
+              <button
+                onClick={() =>
+                  onChange({ audioDataUrl: null, audioName: null })
+                }
+                className="font-mono text-[10px] uppercase tracking-wider flex items-center gap-1 hover:text-ember"
+              >
+                <X className="h-3 w-3" /> Remove
+              </button>
+            )}
+          </div>
+
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleAudioFile(f);
+              e.target.value = "";
+            }}
+          />
+
+          <button
+            onClick={() => audioInputRef.current?.click()}
+            className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-ember transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            {config.audioName ?? "Upload audio file"}
+          </button>
+
+          {config.audioDataUrl && (
+            <>
+              <Field label={`Volume · ${Math.round(config.audioVolume * 100)}%`}>
+                <Slider
+                  value={[config.audioVolume]}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onValueChange={([v]) => onChange({ audioVolume: v })}
+                />
+              </Field>
+              <Field label={`Fade out · ${config.audioFadeOut.toFixed(1)}s`}>
+                <Slider
+                  value={[config.audioFadeOut]}
+                  min={0}
+                  max={5}
+                  step={0.1}
+                  onValueChange={([v]) => onChange({ audioFadeOut: v })}
+                />
+              </Field>
+            </>
+          )}
+        </div>
       </TabsContent>
     </Tabs>
   );
@@ -257,5 +459,31 @@ const ToggleRow: React.FC<{
       {label}
     </Label>
     <Switch checked={checked} onCheckedChange={onChange} />
+  </div>
+);
+
+const ColorField: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}> = ({ label, value, onChange }) => (
+  <div className="space-y-2">
+    <Label className="font-mono text-[10px] uppercase tracking-wider">
+      {label}
+    </Label>
+    <div className="flex gap-2 items-center brutal-border bg-paper p-2">
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-10 h-10 cursor-pointer bg-transparent border-0 p-0"
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 font-mono text-xs bg-transparent outline-none uppercase"
+      />
+    </div>
   </div>
 );
