@@ -31,7 +31,6 @@ async function getFFmpeg(
   if (ffmpegInstance && ffmpegInstance.loaded) return ffmpegInstance;
   const ffmpeg = new FFmpeg();
   ffmpeg.on("log", ({ message }) => onLog(message));
-  // Use jsDelivr core (single-thread, smaller, no SharedArrayBuffer required)
   const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
   await ffmpeg.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
@@ -42,6 +41,56 @@ async function getFFmpeg(
   });
   ffmpegInstance = ffmpeg;
   return ffmpeg;
+}
+/**
+ * Try to encode frames as WebM using libvpx (VP8).
+ * If libvpx is not available in this ffmpeg build, falls back to libx264 in mp4.
+ */
+async function encodeFramesToWebM(
+  ffmpeg: FFmpeg,
+  totalFrames: number
+): Promise<{ file: string; mimeType: string; ext: string }> {
+  // Try VP8 (libvpx) - widely available in ffmpeg.wasm builds
+  try {
+    await ffmpeg.exec([
+      "-framerate",
+      String(FPS),
+      "-i",
+      "frame_%05d.png",
+      "-c:v",
+      "libvpx",
+      "-b:v",
+      "2M",
+      "-deadline",
+      "realtime",
+      "-cpu-used",
+      "5",
+      "-auto-alt-ref",
+      "0",
+      "video_no_audio.webm",
+    ]);
+    return { file: "video_no_audio.webm", mimeType: "video/webm", ext: "webm" };
+  } catch {
+    console.warn("libvpx not available, falling back to libx264 mp4");
+    await ffmpeg.exec([
+      "-framerate",
+      String(FPS),
+      "-i",
+      "frame_%05d.png",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "23",
+      "-movflags",
+      "+faststart",
+      "video_no_audio.mp4",
+    ]);
+    return { file: "video_no_audio.mp4", mimeType: "video/mp4", ext: "mp4" };
+  }
 }
 export function useVideoExport() {
   const [progress, setProgress] = useState<ExportProgress>({
@@ -57,7 +106,6 @@ export function useVideoExport() {
       thumbnailContainer: HTMLElement
     ): Promise<void> => {
       try {
-        // Revoke previous blob if any
         setProgress((p) => {
           if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
           return {
@@ -97,11 +145,6 @@ export function useVideoExport() {
     },
     []
   );
-  /**
-   * Renders the video by repeatedly calling setFrame(i) and waiting for
-   * the consumer's component to re-render the offscreen Thumbnail to that
-   * frame, then capturing the DOM as PNG.
-   */
   const exportWithFrameSetter = useCallback(
     async (
       config: SnippetConfig,
@@ -128,10 +171,8 @@ export function useVideoExport() {
           message: "Rendering frames...",
           blobUrl: null,
         });
-        // Capture each frame as PNG and write to ffmpeg FS
         for (let i = 0; i < totalFrames; i++) {
           await setFrame(i);
-          // Wait for paint
           await new Promise((r) => requestAnimationFrame(() => r(null)));
           await new Promise((r) => requestAnimationFrame(() => r(null)));
           const el = getFrameElement();
@@ -151,7 +192,6 @@ export function useVideoExport() {
               current: i + 1,
               message: `Rendering frame ${i + 1} / ${totalFrames}`,
             }));
-            // Yield to UI
             await new Promise((r) => setTimeout(r, 0));
           }
         }
@@ -162,27 +202,8 @@ export function useVideoExport() {
           message: "Encoding WebM with ffmpeg.wasm...",
           blobUrl: null,
         });
-        // Encode to WebM using libvpx-vp9 (no audio yet)
-        await ffmpeg.exec([
-          "-framerate",
-          String(FPS),
-          "-i",
-          "frame_%05d.png",
-          "-c:v",
-          "libvpx-vp9",
-          "-pix_fmt",
-          "yuva420p",
-          "-b:v",
-          "0",
-          "-crf",
-          "30",
-          "-deadline",
-          "realtime",
-          "-cpu-used",
-          "8",
-          "video_no_audio.webm",
-        ]);
-        let finalFile = "video_no_audio.webm";
+        const { file: videoFile, mimeType, ext } = await encodeFramesToWebM(ffmpeg, totalFrames);
+        let finalFile = videoFile;
         // Mux audio if present
         if (config.audioDataUrl) {
           setProgress({
@@ -192,7 +213,6 @@ export function useVideoExport() {
             message: "Mixing audio...",
             blobUrl: null,
           });
-          // Detect extension from data URL mime
           const mimeMatch = /^data:audio\/([^;]+);/.exec(config.audioDataUrl);
           const audioExt = (mimeMatch?.[1] || "mp3").split("+")[0];
           const audioFile = `audio.${audioExt === "mpeg" ? "mp3" : audioExt}`;
@@ -202,9 +222,11 @@ export function useVideoExport() {
           );
           const totalSec = totalFrames / FPS;
           const fadeStart = Math.max(0, totalSec - config.audioFadeOut);
+          const outputWithAudio = `video_with_audio.${ext}`;
+          const isWebm = ext === "webm";
           await ffmpeg.exec([
             "-i",
-            "video_no_audio.webm",
+            videoFile,
             "-i",
             audioFile,
             "-filter_complex",
@@ -216,17 +238,17 @@ export function useVideoExport() {
             "-c:v",
             "copy",
             "-c:a",
-            "libopus",
+            isWebm ? "libvorbis" : "aac",
             "-b:a",
             "128k",
             "-shortest",
-            "video_with_audio.webm",
+            outputWithAudio,
           ]);
-          finalFile = "video_with_audio.webm";
+          finalFile = outputWithAudio;
         }
         const data = (await ffmpeg.readFile(finalFile)) as Uint8Array;
         const blob = new Blob([data.buffer as ArrayBuffer], {
-          type: "video/webm",
+          type: mimeType,
         });
         const blobUrl = URL.createObjectURL(blob);
         // Cleanup ffmpeg FS
@@ -235,9 +257,9 @@ export function useVideoExport() {
             const idx = String(i).padStart(5, "0");
             await ffmpeg.deleteFile(`frame_${idx}.png`);
           }
-          await ffmpeg.deleteFile("video_no_audio.webm");
+          await ffmpeg.deleteFile(videoFile);
           if (config.audioDataUrl) {
-            await ffmpeg.deleteFile("video_with_audio.webm");
+            await ffmpeg.deleteFile(finalFile);
           }
         } catch {
           // ignore cleanup errors
