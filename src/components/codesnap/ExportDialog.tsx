@@ -58,7 +58,7 @@ export const ExportDialog: React.FC<Props> = ({
     a.href = progress.blobUrl;
     const safeName =
       config.filename.replace(/\.[^.]+$/, "") || "codesnap";
-    const ext = progress.fileExt || "webm";
+    const ext = progress.fileExt || "mp4";
     a.download = `${safeName}.${ext}`;
     document.body.appendChild(a);
     a.click();
@@ -80,7 +80,6 @@ export const ExportDialog: React.FC<Props> = ({
     progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0;
-  const formatLabel = (progress.fileExt || "webm").toUpperCase();
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
