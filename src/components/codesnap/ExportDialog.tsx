@@ -37,8 +37,6 @@ export const ExportDialog: React.FC<Props> = ({
     return new Promise<void>((resolve) => {
       setFramePromiseRef.current = resolve;
       setRenderFrame(frame);
-      // Resolve after a microtask + raf in case React batches synchronously
-      // (the resolve will also be triggered by the effect-style ref below)
       requestAnimationFrame(() => {
         if (setFramePromiseRef.current === resolve) {
           setFramePromiseRef.current = null;
@@ -60,7 +58,8 @@ export const ExportDialog: React.FC<Props> = ({
     a.href = progress.blobUrl;
     const safeName =
       config.filename.replace(/\.[^.]+$/, "") || "codesnap";
-    a.download = `${safeName}.webm`;
+    const ext = progress.fileExt || "webm";
+    a.download = `${safeName}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -81,13 +80,14 @@ export const ExportDialog: React.FC<Props> = ({
     progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0;
+  const formatLabel = (progress.fileExt || "webm").toUpperCase();
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="brutal-border rounded-none bg-paper max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display uppercase text-2xl tracking-tight">
-              Export WebM
+              Export {formatLabel}
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">
               Renders frames in your browser and encodes with ffmpeg.wasm.
@@ -162,7 +162,7 @@ export const ExportDialog: React.FC<Props> = ({
                   onClick={handleDownload}
                   className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono uppercase rounded-none"
                 >
-                  <Download className="mr-2 h-4 w-4" /> Download WebM
+                  <Download className="mr-2 h-4 w-4" /> Download {formatLabel}
                 </Button>
               </>
             )}
@@ -187,8 +187,6 @@ export const ExportDialog: React.FC<Props> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Offscreen full-resolution Thumbnail used to capture frames.
-          Positioned far off-screen so it doesn't affect layout. */}
       <div
         style={{
           position: "fixed",
