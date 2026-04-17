@@ -47,7 +47,7 @@ const Index = () => {
               className="brutal-border brutal-shadow-sm bg-ember text-white hover:bg-ember/90 font-mono uppercase rounded-none"
               onClick={() => setExportOpen(true)}
             >
-              <Download className="mr-2 h-4 w-4" /> Export MP4
+              <Download className="mr-2 h-4 w-4" /> Export
             </Button>
           </div>
         </div>
