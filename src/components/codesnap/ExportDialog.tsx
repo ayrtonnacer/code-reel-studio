@@ -19,13 +19,11 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Download, Loader2, X } from "lucide-react";
-
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   config: SnippetConfig;
 }
-
 export const ExportDialog: React.FC<Props> = ({
   open,
   onOpenChange,
@@ -35,7 +33,6 @@ export const ExportDialog: React.FC<Props> = ({
   const [renderFrame, setRenderFrame] = useState(0);
   const setFramePromiseRef = useRef<(() => void) | null>(null);
   const { progress, exportWithFrameSetter, reset } = useVideoExport();
-
   const setFrame = useCallback((frame: number) => {
     return new Promise<void>((resolve) => {
       setFramePromiseRef.current = resolve;
@@ -50,7 +47,6 @@ export const ExportDialog: React.FC<Props> = ({
       });
     });
   }, []);
-
   const handleStart = async () => {
     await exportWithFrameSetter(
       config,
@@ -58,19 +54,17 @@ export const ExportDialog: React.FC<Props> = ({
       setFrame
     );
   };
-
   const handleDownload = () => {
     if (!progress.blobUrl) return;
     const a = document.createElement("a");
     a.href = progress.blobUrl;
     const safeName =
       config.filename.replace(/\.[^.]+$/, "") || "codesnap";
-    a.download = `${safeName}.mp4`;
+    a.download = `${safeName}.webm`;
     document.body.appendChild(a);
     a.click();
     a.remove();
   };
-
   const handleClose = (v: boolean) => {
     if (!v) {
       reset();
@@ -78,36 +72,32 @@ export const ExportDialog: React.FC<Props> = ({
     }
     onOpenChange(v);
   };
-
   const isWorking =
     progress.phase === "loading-ffmpeg" ||
     progress.phase === "rendering-frames" ||
     progress.phase === "encoding" ||
     progress.phase === "muxing-audio";
-
   const pct =
     progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0;
-
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="brutal-border rounded-none bg-paper max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display uppercase text-2xl tracking-tight">
-              Export MP4
+              Export WebM
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">
               Renders frames in your browser and encodes with ffmpeg.wasm.
               Keep this tab focused while exporting.
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-2">
             {progress.phase === "idle" && (
               <div className="font-mono text-xs space-y-2 brutal-border bg-concrete p-3">
-                <Row label="Resolution" value={`${VIDEO_WIDTH}×${VIDEO_HEIGHT}`} />
+                <Row label="Resolution" value={`${VIDEO_WIDTH}\u00d7${VIDEO_HEIGHT}`} />
                 <Row label="FPS" value={String(FPS)} />
                 <Row
                   label="Audio"
@@ -124,7 +114,6 @@ export const ExportDialog: React.FC<Props> = ({
                 </p>
               </div>
             )}
-
             {progress.phase !== "idle" && (
               <div className="space-y-3">
                 <div className="font-mono text-xs flex items-center gap-2">
@@ -151,7 +140,6 @@ export const ExportDialog: React.FC<Props> = ({
               </div>
             )}
           </div>
-
           <DialogFooter className="gap-2 sm:gap-2">
             {progress.phase === "idle" && (
               <Button
@@ -174,7 +162,7 @@ export const ExportDialog: React.FC<Props> = ({
                   onClick={handleDownload}
                   className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono uppercase rounded-none"
                 >
-                  <Download className="mr-2 h-4 w-4" /> Download MP4
+                  <Download className="mr-2 h-4 w-4" /> Download WebM
                 </Button>
               </>
             )}
@@ -199,7 +187,6 @@ export const ExportDialog: React.FC<Props> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       {/* Offscreen full-resolution Thumbnail used to capture frames.
           Positioned far off-screen so it doesn't affect layout. */}
       <div
@@ -237,7 +224,6 @@ export const ExportDialog: React.FC<Props> = ({
     </>
   );
 };
-
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex items-center justify-between">
     <span className="uppercase text-[10px] tracking-wider text-muted-foreground">
