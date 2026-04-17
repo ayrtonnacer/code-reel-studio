@@ -204,11 +204,11 @@ export function useVideoExport() {
           phase: "encoding",
           current: 0,
           total: 100,
-          message: "Encoding WebM with ffmpeg.wasm...",
+          message: "Encoding MP4 with ffmpeg.wasm...",
           blobUrl: null,
           fileExt: "webm",
         });
-        const { file: videoFile, mimeType, ext } = await encodeFramesToWebM(ffmpeg);
+        const { file: videoFile, mimeType, ext } = await encodeFramesToMp4(ffmpeg);
         let finalFile = videoFile;
         if (config.audioDataUrl) {
           setProgress({
