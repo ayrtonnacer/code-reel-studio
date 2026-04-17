@@ -38,7 +38,7 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="font-mono text-[11px] uppercase tracking-wider bg-voltage text-ink px-3 py-1 brutal-border">
               v0.2 · Internal
             </span>

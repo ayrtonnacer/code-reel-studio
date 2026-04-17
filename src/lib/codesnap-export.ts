@@ -43,7 +43,7 @@ async function getFFmpeg(
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
-async function encodeFramesToWebM(
+async function encodeFramesToMp4(
   ffmpeg: FFmpeg
 ): Promise<{ file: string; mimeType: string; ext: string }> {
   await ffmpeg.exec([
@@ -52,16 +52,16 @@ async function encodeFramesToWebM(
     "-i",
     "frame_%05d.png",
     "-c:v",
-    "libvpx",
-    "-b:v",
-    "1M",
-    "-deadline",
-    "realtime",
-    "-cpu-used",
-    "5",
-    "video_no_audio.webm",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "23",
+    "-pix_fmt",
+    "yuv420p",
+    "video_no_audio.mp4",
   ]);
-  return { file: "video_no_audio.webm", mimeType: "video/webm", ext: "webm" };
+  return { file: "video_no_audio.mp4", mimeType: "video/mp4", ext: "mp4" };
 }
 export function useVideoExport() {
   const [progress, setProgress] = useState<ExportProgress>({
@@ -70,7 +70,7 @@ export function useVideoExport() {
     total: 0,
     message: "",
     blobUrl: null,
-    fileExt: "webm",
+    fileExt: "mp4",
   });
   const exportVideo = useCallback(
     async (
@@ -86,7 +86,7 @@ export function useVideoExport() {
             total: 0,
             message: "Loading ffmpeg.wasm (~30MB, first time only)...",
             blobUrl: null,
-            fileExt: "webm",
+            fileExt: "mp4",
           };
         });
         const ffmpeg = await getFFmpeg(() => {});
@@ -97,7 +97,7 @@ export function useVideoExport() {
           total: totalFrames,
           message: "Rendering frames...",
           blobUrl: null,
-          fileExt: "webm",
+          fileExt: "mp4",
         });
         const target =
           (thumbnailContainer.querySelector(
@@ -114,7 +114,7 @@ export function useVideoExport() {
           total: 0,
           message: err instanceof Error ? err.message : "Unknown error",
           blobUrl: null,
-          fileExt: "webm",
+          fileExt: "mp4",
         });
       }
     },
@@ -135,7 +135,7 @@ export function useVideoExport() {
             total: 0,
             message: "Loading ffmpeg.wasm (first time only, ~30MB)...",
             blobUrl: null,
-            fileExt: "webm",
+            fileExt: "mp4",
           };
         });
         const ffmpeg = await getFFmpeg(() => {});
@@ -146,7 +146,7 @@ export function useVideoExport() {
           total: totalFrames,
           message: "Rendering frames...",
           blobUrl: null,
-          fileExt: "webm",
+          fileExt: "mp4",
         });
         for (let i = 0; i < totalFrames; i++) {
           await setFrame(i);
@@ -176,11 +176,11 @@ export function useVideoExport() {
           phase: "encoding",
           current: 0,
           total: 100,
-          message: "Encoding WebM with ffmpeg.wasm...",
+          message: "Encoding MP4 with ffmpeg.wasm...",
           blobUrl: null,
-          fileExt: "webm",
+          fileExt: "mp4",
         });
-        const { file: videoFile, mimeType, ext } = await encodeFramesToWebM(ffmpeg);
+        const { file: videoFile, mimeType, ext } = await encodeFramesToMp4(ffmpeg);
         let finalFile = videoFile;
         if (config.audioDataUrl) {
           setProgress({
@@ -215,7 +215,7 @@ export function useVideoExport() {
             "-c:v",
             "copy",
             "-c:a",
-            "libvorbis",
+            "aac",
             "-b:a",
             "128k",
             "-shortest",
@@ -256,7 +256,7 @@ export function useVideoExport() {
           total: 0,
           message: err instanceof Error ? err.message : "Export failed",
           blobUrl: null,
-          fileExt: "webm",
+          fileExt: "mp4",
         });
       }
     },
@@ -271,7 +271,7 @@ export function useVideoExport() {
         total: 0,
         message: "",
         blobUrl: null,
-        fileExt: "webm",
+        fileExt: "mp4",
       };
     });
   }, []);
