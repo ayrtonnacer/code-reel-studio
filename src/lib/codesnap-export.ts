@@ -43,53 +43,27 @@ async function getFFmpeg(
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
-/**
- * Try to encode frames as WebM using libvpx (VP8).
- * If libvpx is not available in this ffmpeg build, falls back to libx264 in mp4.
- */
-async function encodeFramesToWebM(
+async function encodeFramesToMp4(
   ffmpeg: FFmpeg
 ): Promise<{ file: string; mimeType: string; ext: string }> {
-  try {
-    await ffmpeg.exec([
-      "-framerate",
-      String(FPS),
-      "-i",
-      "frame_%05d.png",
-      "-c:v",
-      "libvpx",
-      "-b:v",
-      "2M",
-      "-deadline",
-      "realtime",
-      "-cpu-used",
-      "5",
-      "-auto-alt-ref",
-      "0",
-      "video_no_audio.webm",
-    ]);
-    return { file: "video_no_audio.webm", mimeType: "video/webm", ext: "webm" };
-  } catch {
-    console.warn("libvpx not available, falling back to libx264 mp4");
-    await ffmpeg.exec([
-      "-framerate",
-      String(FPS),
-      "-i",
-      "frame_%05d.png",
-      "-c:v",
-      "libx264",
-      "-pix_fmt",
-      "yuv420p",
-      "-preset",
-      "ultrafast",
-      "-crf",
-      "23",
-      "-movflags",
-      "+faststart",
-      "video_no_audio.mp4",
-    ]);
-    return { file: "video_no_audio.mp4", mimeType: "video/mp4", ext: "mp4" };
-  }
+  await ffmpeg.exec([
+    "-framerate",
+    String(FPS),
+    "-i",
+    "frame_%05d.png",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-preset",
+    "ultrafast",
+    "-crf",
+    "23",
+    "-movflags",
+    "+faststart",
+    "video_no_audio.mp4",
+  ]);
+  return { file: "video_no_audio.mp4", mimeType: "video/mp4", ext: "mp4" };
 }
 export function useVideoExport() {
   const [progress, setProgress] = useState<ExportProgress>({
