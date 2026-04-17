@@ -87,7 +87,7 @@ export const ExportDialog: React.FC<Props> = ({
         <DialogContent className="brutal-border rounded-none bg-paper max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display uppercase text-2xl tracking-tight">
-              Export {formatLabel}
+              Export
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">
               Renders frames in your browser and encodes with ffmpeg.wasm.
@@ -162,7 +162,7 @@ export const ExportDialog: React.FC<Props> = ({
                   onClick={handleDownload}
                   className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono uppercase rounded-none"
                 >
-                  <Download className="mr-2 h-4 w-4" /> Download {formatLabel}
+                  <Download className="mr-2 h-4 w-4" /> Download
                 </Button>
               </>
             )}
