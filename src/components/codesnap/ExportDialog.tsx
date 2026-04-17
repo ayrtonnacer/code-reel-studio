@@ -58,7 +58,7 @@ export const ExportDialog: React.FC<Props> = ({
     a.href = progress.blobUrl;
     const safeName =
       config.filename.replace(/\.[^.]+$/, "") || "codesnap";
-    const ext = progress.fileExt || "mp4";
+    const ext = progress.fileExt || "webm";
     a.download = `${safeName}.${ext}`;
     document.body.appendChild(a);
     a.click();
