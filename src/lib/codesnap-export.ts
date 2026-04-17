@@ -9,7 +9,6 @@ import {
   VIDEO_WIDTH,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
-
 export type ExportPhase =
   | "idle"
   | "loading-ffmpeg"
@@ -18,7 +17,6 @@ export type ExportPhase =
   | "muxing-audio"
   | "done"
   | "error";
-
 export interface ExportProgress {
   phase: ExportPhase;
   current: number;
@@ -26,9 +24,7 @@ export interface ExportProgress {
   message: string;
   blobUrl: string | null;
 }
-
 let ffmpegInstance: FFmpeg | null = null;
-
 async function getFFmpeg(
   onLog: (msg: string) => void
 ): Promise<FFmpeg> {
@@ -47,7 +43,6 @@ async function getFFmpeg(
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
-
 export function useVideoExport() {
   const [progress, setProgress] = useState<ExportProgress>({
     phase: "idle",
@@ -56,7 +51,6 @@ export function useVideoExport() {
     message: "",
     blobUrl: null,
   });
-
   const exportVideo = useCallback(
     async (
       config: SnippetConfig,
@@ -74,11 +68,8 @@ export function useVideoExport() {
             blobUrl: null,
           };
         });
-
         const ffmpeg = await getFFmpeg(() => {});
-
         const totalFrames = computeDurationFrames(config);
-
         setProgress({
           phase: "rendering-frames",
           current: 0,
@@ -86,22 +77,12 @@ export function useVideoExport() {
           message: "Rendering frames...",
           blobUrl: null,
         });
-
-        // Find the inner Remotion canvas div inside the Thumbnail wrapper
-        // Thumbnail renders the composition at its native size; we'll capture it.
         const target =
           (thumbnailContainer.querySelector(
             '[data-remotion-canvas]'
           ) as HTMLElement) ||
           (thumbnailContainer.firstElementChild as HTMLElement) ||
           thumbnailContainer;
-
-        // We render frames sequentially. The caller is responsible for
-        // updating the Thumbnail's frame prop between captures via
-        // `onFrameRequest`. Instead, we'll use a callback approach below.
-        // For simplicity, this hook expects the consumer to use exportFrames
-        // which controls the frame externally. To keep API simple, we expose
-        // a runner that takes a "setFrame" callback.
         throw new Error("Use exportWithFrameSetter instead");
       } catch (err) {
         console.error(err);
@@ -116,7 +97,6 @@ export function useVideoExport() {
     },
     []
   );
-
   /**
    * Renders the video by repeatedly calling setFrame(i) and waiting for
    * the consumer's component to re-render the offscreen Thumbnail to that
@@ -139,11 +119,8 @@ export function useVideoExport() {
             blobUrl: null,
           };
         });
-
         const ffmpeg = await getFFmpeg(() => {});
-
         const totalFrames = computeDurationFrames(config);
-
         setProgress({
           phase: "rendering-frames",
           current: 0,
@@ -151,17 +128,14 @@ export function useVideoExport() {
           message: "Rendering frames...",
           blobUrl: null,
         });
-
         // Capture each frame as PNG and write to ffmpeg FS
         for (let i = 0; i < totalFrames; i++) {
           await setFrame(i);
           // Wait for paint
           await new Promise((r) => requestAnimationFrame(() => r(null)));
           await new Promise((r) => requestAnimationFrame(() => r(null)));
-
           const el = getFrameElement();
           if (!el) throw new Error("Frame element not mounted");
-
           const dataUrl = await toPng(el, {
             cacheBust: false,
             pixelRatio: 1,
@@ -169,10 +143,8 @@ export function useVideoExport() {
             height: VIDEO_HEIGHT,
             skipFonts: false,
           });
-
           const idx = String(i).padStart(5, "0");
           await ffmpeg.writeFile(`frame_${idx}.png`, await fetchFile(dataUrl));
-
           if (i % 3 === 0 || i === totalFrames - 1) {
             setProgress((p) => ({
               ...p,
@@ -183,36 +155,34 @@ export function useVideoExport() {
             await new Promise((r) => setTimeout(r, 0));
           }
         }
-
         setProgress({
           phase: "encoding",
           current: 0,
           total: 100,
-          message: "Encoding MP4 with ffmpeg.wasm...",
+          message: "Encoding WebM with ffmpeg.wasm...",
           blobUrl: null,
         });
-
-        // Encode to MP4 (no audio yet)
+        // Encode to WebM using libvpx-vp9 (no audio yet)
         await ffmpeg.exec([
           "-framerate",
           String(FPS),
           "-i",
           "frame_%05d.png",
           "-c:v",
-          "libx264",
+          "libvpx-vp9",
           "-pix_fmt",
-          "yuv420p",
-          "-preset",
-          "ultrafast",
+          "yuva420p",
+          "-b:v",
+          "0",
           "-crf",
-          "23",
-          "-movflags",
-          "+faststart",
-          "video_no_audio.mp4",
+          "30",
+          "-deadline",
+          "realtime",
+          "-cpu-used",
+          "8",
+          "video_no_audio.webm",
         ]);
-
-        let finalFile = "video_no_audio.mp4";
-
+        let finalFile = "video_no_audio.webm";
         // Mux audio if present
         if (config.audioDataUrl) {
           setProgress({
@@ -222,23 +192,19 @@ export function useVideoExport() {
             message: "Mixing audio...",
             blobUrl: null,
           });
-
           // Detect extension from data URL mime
           const mimeMatch = /^data:audio\/([^;]+);/.exec(config.audioDataUrl);
           const audioExt = (mimeMatch?.[1] || "mp3").split("+")[0];
           const audioFile = `audio.${audioExt === "mpeg" ? "mp3" : audioExt}`;
-
           await ffmpeg.writeFile(
             audioFile,
             await fetchFile(config.audioDataUrl)
           );
-
           const totalSec = totalFrames / FPS;
           const fadeStart = Math.max(0, totalSec - config.audioFadeOut);
-
           await ffmpeg.exec([
             "-i",
-            "video_no_audio.mp4",
+            "video_no_audio.webm",
             "-i",
             audioFile,
             "-filter_complex",
@@ -250,36 +216,32 @@ export function useVideoExport() {
             "-c:v",
             "copy",
             "-c:a",
-            "aac",
+            "libopus",
             "-b:a",
             "128k",
             "-shortest",
-            "video_with_audio.mp4",
+            "video_with_audio.webm",
           ]);
-
-          finalFile = "video_with_audio.mp4";
+          finalFile = "video_with_audio.webm";
         }
-
         const data = (await ffmpeg.readFile(finalFile)) as Uint8Array;
         const blob = new Blob([data.buffer as ArrayBuffer], {
-          type: "video/mp4",
+          type: "video/webm",
         });
         const blobUrl = URL.createObjectURL(blob);
-
         // Cleanup ffmpeg FS
         try {
           for (let i = 0; i < totalFrames; i++) {
             const idx = String(i).padStart(5, "0");
             await ffmpeg.deleteFile(`frame_${idx}.png`);
           }
-          await ffmpeg.deleteFile("video_no_audio.mp4");
+          await ffmpeg.deleteFile("video_no_audio.webm");
           if (config.audioDataUrl) {
-            await ffmpeg.deleteFile("video_with_audio.mp4");
+            await ffmpeg.deleteFile("video_with_audio.webm");
           }
         } catch {
           // ignore cleanup errors
         }
-
         setProgress({
           phase: "done",
           current: totalFrames,
@@ -300,7 +262,6 @@ export function useVideoExport() {
     },
     []
   );
-
   const reset = useCallback(() => {
     setProgress((p) => {
       if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
@@ -313,6 +274,5 @@ export function useVideoExport() {
       };
     });
   }, []);
-
   return { progress, exportVideo, exportWithFrameSetter, reset };
 }
