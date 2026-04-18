@@ -72,10 +72,8 @@ export const ExportDialog: React.FC<Props> = ({
     onOpenChange(v);
   };
   const isWorking =
-    progress.phase === "loading-ffmpeg" ||
     progress.phase === "rendering-frames" ||
-    progress.phase === "encoding" ||
-    progress.phase === "muxing-audio";
+    progress.phase === "encoding";
   const pct =
     progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
@@ -89,7 +87,7 @@ export const ExportDialog: React.FC<Props> = ({
               Export
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">
-              Renders frames in your browser and encodes with ffmpeg.wasm.
+              Renders and encodes frames directly in your browser.
               Keep this tab focused while exporting.
             </DialogDescription>
           </DialogHeader>
@@ -107,9 +105,9 @@ export const ExportDialog: React.FC<Props> = ({
                   }
                 />
                 <p className="text-[10px] text-muted-foreground pt-2 leading-relaxed">
-                  First export downloads ffmpeg.wasm (~30MB). Subsequent
-                  exports reuse it. Long videos take time — expect ~1s per
-                  rendered frame.
+                  Export runs fully in your browser — no uploads, no installs.
+                  Long videos take time: expect ~1s per frame to render plus
+                  the video duration for encoding.
                 </p>
               </div>
             )}
@@ -132,8 +130,7 @@ export const ExportDialog: React.FC<Props> = ({
                   <span className="truncate">{progress.message}</span>
                 </div>
                 {(progress.phase === "rendering-frames" ||
-                  progress.phase === "encoding" ||
-                  progress.phase === "muxing-audio") && (
+                  progress.phase === "encoding") && (
                   <Progress value={pct} className="h-2 brutal-border rounded-none" />
                 )}
               </div>

@@ -1,6 +1,4 @@
 import { useState, useCallback } from "react";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { toPng } from "html-to-image";
 import {
   computeDurationFrames,
@@ -9,14 +7,14 @@ import {
   VIDEO_WIDTH,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
+
 export type ExportPhase =
   | "idle"
-  | "loading-ffmpeg"
   | "rendering-frames"
   | "encoding"
-  | "muxing-audio"
   | "done"
   | "error";
+
 export interface ExportProgress {
   phase: ExportPhase;
   current: number;
@@ -25,44 +23,7 @@ export interface ExportProgress {
   blobUrl: string | null;
   fileExt: string;
 }
-let ffmpegInstance: FFmpeg | null = null;
-async function getFFmpeg(
-  onLog: (msg: string) => void
-): Promise<FFmpeg> {
-  if (ffmpegInstance && ffmpegInstance.loaded) return ffmpegInstance;
-  const ffmpeg = new FFmpeg();
-  ffmpeg.on("log", ({ message }) => onLog(message));
-  const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(
-      `${baseURL}/ffmpeg-core.wasm`,
-      "application/wasm"
-    ),
-  });
-  ffmpegInstance = ffmpeg;
-  return ffmpeg;
-}
-async function encodeFramesToMp4(
-  ffmpeg: FFmpeg
-): Promise<{ file: string; mimeType: string; ext: string }> {
-  await ffmpeg.exec([
-    "-framerate",
-    String(FPS),
-    "-i",
-    "frame_%05d.png",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "ultrafast",
-    "-crf",
-    "23",
-    "-pix_fmt",
-    "yuv420p",
-    "video_no_audio.mp4",
-  ]);
-  return { file: "video_no_audio.mp4", mimeType: "video/mp4", ext: "mp4" };
-}
+
 export function useVideoExport() {
   const [progress, setProgress] = useState<ExportProgress>({
     phase: "idle",
@@ -70,56 +31,9 @@ export function useVideoExport() {
     total: 0,
     message: "",
     blobUrl: null,
-    fileExt: "mp4",
+    fileExt: "webm",
   });
-  const exportVideo = useCallback(
-    async (
-      config: SnippetConfig,
-      thumbnailContainer: HTMLElement
-    ): Promise<void> => {
-      try {
-        setProgress((p) => {
-          if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
-          return {
-            phase: "loading-ffmpeg",
-            current: 0,
-            total: 0,
-            message: "Loading ffmpeg.wasm (~30MB, first time only)...",
-            blobUrl: null,
-            fileExt: "mp4",
-          };
-        });
-        const ffmpeg = await getFFmpeg(() => {});
-        const totalFrames = computeDurationFrames(config);
-        setProgress({
-          phase: "rendering-frames",
-          current: 0,
-          total: totalFrames,
-          message: "Rendering frames...",
-          blobUrl: null,
-          fileExt: "mp4",
-        });
-        const target =
-          (thumbnailContainer.querySelector(
-            '[data-remotion-canvas]'
-          ) as HTMLElement) ||
-          (thumbnailContainer.firstElementChild as HTMLElement) ||
-          thumbnailContainer;
-        throw new Error("Use exportWithFrameSetter instead");
-      } catch (err) {
-        console.error(err);
-        setProgress({
-          phase: "error",
-          current: 0,
-          total: 0,
-          message: err instanceof Error ? err.message : "Unknown error",
-          blobUrl: null,
-          fileExt: "mp4",
-        });
-      }
-    },
-    []
-  );
+
   const exportWithFrameSetter = useCallback(
     async (
       config: SnippetConfig,
@@ -127,33 +41,41 @@ export function useVideoExport() {
       setFrame: (frame: number) => Promise<void>
     ): Promise<void> => {
       try {
-        setProgress((p) => {
-          if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
-          return {
-            phase: "loading-ffmpeg",
-            current: 0,
-            total: 0,
-            message: "Loading ffmpeg.wasm (first time only, ~30MB)...",
-            blobUrl: null,
-            fileExt: "mp4",
-          };
-        });
-        const ffmpeg = await getFFmpeg(() => {});
+        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : MediaRecorder.isTypeSupported("video/webm;codecs=vp8")
+          ? "video/webm;codecs=vp8"
+          : MediaRecorder.isTypeSupported("video/webm")
+          ? "video/webm"
+          : null;
+
+        if (!mimeType) {
+          throw new Error(
+            "Your browser doesn't support WebM recording. Please use Chrome, Edge, or Firefox."
+          );
+        }
+
         const totalFrames = computeDurationFrames(config);
+
+        // Phase 1: render every frame to a PNG blob
         setProgress({
           phase: "rendering-frames",
           current: 0,
           total: totalFrames,
           message: "Rendering frames...",
           blobUrl: null,
-          fileExt: "mp4",
+          fileExt: "webm",
         });
+
+        const frameBlobs: Blob[] = [];
         for (let i = 0; i < totalFrames; i++) {
           await setFrame(i);
           await new Promise((r) => requestAnimationFrame(() => r(null)));
           await new Promise((r) => requestAnimationFrame(() => r(null)));
+
           const el = getFrameElement();
           if (!el) throw new Error("Frame element not mounted");
+
           const dataUrl = await toPng(el, {
             cacheBust: false,
             pixelRatio: 1,
@@ -161,8 +83,10 @@ export function useVideoExport() {
             height: VIDEO_HEIGHT,
             skipFonts: true,
           });
-          const idx = String(i).padStart(5, "0");
-          await ffmpeg.writeFile(`frame_${idx}.png`, await fetchFile(dataUrl));
+
+          const blob = await (await fetch(dataUrl)).blob();
+          frameBlobs.push(blob);
+
           if (i % 3 === 0 || i === totalFrames - 1) {
             setProgress((p) => ({
               ...p,
@@ -172,81 +96,98 @@ export function useVideoExport() {
             await new Promise((r) => setTimeout(r, 0));
           }
         }
+
+        // Phase 2: encode frames into WebM via MediaRecorder
         setProgress({
           phase: "encoding",
           current: 0,
-          total: 100,
-          message: "Encoding MP4 with ffmpeg.wasm...",
+          total: totalFrames,
+          message: "Encoding WebM...",
           blobUrl: null,
-          fileExt: "mp4",
+          fileExt: "webm",
         });
-        const { file: videoFile, mimeType, ext } = await encodeFramesToMp4(ffmpeg);
-        let finalFile = videoFile;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = VIDEO_WIDTH;
+        canvas.height = VIDEO_HEIGHT;
+        const ctx = canvas.getContext("2d")!;
+
+        const canvasStream = canvas.captureStream(FPS);
+        const tracks: MediaStreamTrack[] = [
+          ...canvasStream.getVideoTracks(),
+        ];
+
+        let audioCtx: AudioContext | null = null;
         if (config.audioDataUrl) {
-          setProgress({
-            phase: "muxing-audio",
-            current: 0,
-            total: 100,
-            message: "Mixing audio...",
-            blobUrl: null,
-            fileExt: ext,
-          });
-          const mimeMatch = /^data:audio\/([^;]+);/.exec(config.audioDataUrl);
-          const audioExt = (mimeMatch?.[1] || "mp3").split("+")[0];
-          const audioFile = `audio.${audioExt === "mpeg" ? "mp3" : audioExt}`;
-          await ffmpeg.writeFile(
-            audioFile,
-            await fetchFile(config.audioDataUrl)
-          );
+          audioCtx = new AudioContext();
+          const res = await fetch(config.audioDataUrl);
+          const arrayBuffer = await res.arrayBuffer();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+          const dest = audioCtx.createMediaStreamDestination();
+          const source = audioCtx.createBufferSource();
+          source.buffer = audioBuffer;
+
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.value = config.audioVolume;
+
           const totalSec = totalFrames / FPS;
           const fadeStart = Math.max(0, totalSec - config.audioFadeOut);
-          const outputWithAudio = `video_with_audio.${ext}`;
-          await ffmpeg.exec([
-            "-i",
-            videoFile,
-            "-i",
-            audioFile,
-            "-filter_complex",
-            `[1:a]volume=${config.audioVolume},afade=t=out:st=${fadeStart}:d=${config.audioFadeOut}[a]`,
-            "-map",
-            "0:v",
-            "-map",
-            "[a]",
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-shortest",
-            outputWithAudio,
-          ]);
-          finalFile = outputWithAudio;
+          gainNode.gain.setValueAtTime(config.audioVolume, audioCtx.currentTime + fadeStart);
+          gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + totalSec);
+
+          source.connect(gainNode);
+          gainNode.connect(dest);
+          dest.stream.getAudioTracks().forEach((t) => tracks.push(t));
+          source.start(audioCtx.currentTime);
         }
-        const data = (await ffmpeg.readFile(finalFile)) as Uint8Array;
-        const blob = new Blob([data.buffer as ArrayBuffer], {
-          type: mimeType,
+
+        const stream = new MediaStream(tracks);
+        const chunks: Blob[] = [];
+        const recorder = new MediaRecorder(stream, { mimeType });
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        const recordingDone = new Promise<void>((resolve) => {
+          recorder.onstop = () => resolve();
         });
-        const blobUrl = URL.createObjectURL(blob);
-        try {
-          for (let i = 0; i < totalFrames; i++) {
-            const idx = String(i).padStart(5, "0");
-            await ffmpeg.deleteFile(`frame_${idx}.png`);
+
+        recorder.start();
+
+        const frameDuration = 1000 / FPS;
+        for (let i = 0; i < frameBlobs.length; i++) {
+          const bitmap = await createImageBitmap(frameBlobs[i]);
+          ctx.drawImage(bitmap, 0, 0);
+          bitmap.close();
+          await new Promise((r) => setTimeout(r, frameDuration));
+
+          if (i % 5 === 0 || i === frameBlobs.length - 1) {
+            setProgress((p) => ({
+              ...p,
+              current: i + 1,
+              message: `Encoding frame ${i + 1} / ${totalFrames}`,
+            }));
           }
-          await ffmpeg.deleteFile(videoFile);
-          if (config.audioDataUrl) {
-            await ffmpeg.deleteFile(finalFile);
-          }
-        } catch {
-          // ignore cleanup errors
         }
+
+        recorder.stop();
+        await recordingDone;
+
+        if (audioCtx) {
+          audioCtx.close();
+        }
+
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const blobUrl = URL.createObjectURL(blob);
+
         setProgress({
           phase: "done",
           current: totalFrames,
           total: totalFrames,
           message: "Done!",
           blobUrl,
-          fileExt: ext,
+          fileExt: "webm",
         });
       } catch (err) {
         console.error(err);
@@ -256,12 +197,13 @@ export function useVideoExport() {
           total: 0,
           message: err instanceof Error ? err.message : "Export failed",
           blobUrl: null,
-          fileExt: "mp4",
+          fileExt: "webm",
         });
       }
     },
     []
   );
+
   const reset = useCallback(() => {
     setProgress((p) => {
       if (p.blobUrl) URL.revokeObjectURL(p.blobUrl);
@@ -271,9 +213,10 @@ export function useVideoExport() {
         total: 0,
         message: "",
         blobUrl: null,
-        fileExt: "mp4",
+        fileExt: "webm",
       };
     });
   }, []);
-  return { progress, exportVideo, exportWithFrameSetter, reset };
+
+  return { progress, exportWithFrameSetter, reset };
 }
