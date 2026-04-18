@@ -7,7 +7,7 @@ import {
   VIDEO_WIDTH,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
-import { useVideoExport } from "@/lib/codesnap-export";
+import { useVideoExport, isMp4Supported, type ExportFormat } from "@/lib/codesnap-export";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,11 +19,13 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Download, Loader2, X } from "lucide-react";
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   config: SnippetConfig;
 }
+
 export const ExportDialog: React.FC<Props> = ({
   open,
   onOpenChange,
@@ -31,8 +33,11 @@ export const ExportDialog: React.FC<Props> = ({
 }) => {
   const offscreenRef = useRef<HTMLDivElement>(null);
   const [renderFrame, setRenderFrame] = useState(0);
+  const [format, setFormat] = useState<ExportFormat>("webm");
   const setFramePromiseRef = useRef<(() => void) | null>(null);
   const { progress, exportWithFrameSetter, reset } = useVideoExport();
+  const mp4Supported = isMp4Supported();
+
   const setFrame = useCallback((frame: number) => {
     return new Promise<void>((resolve) => {
       setFramePromiseRef.current = resolve;
@@ -45,13 +50,16 @@ export const ExportDialog: React.FC<Props> = ({
       });
     });
   }, []);
+
   const handleStart = async () => {
     await exportWithFrameSetter(
       config,
       () => offscreenRef.current,
-      setFrame
+      setFrame,
+      format
     );
   };
+
   const handleDownload = () => {
     if (!progress.blobUrl) return;
     const a = document.createElement("a");
@@ -64,6 +72,7 @@ export const ExportDialog: React.FC<Props> = ({
     a.click();
     a.remove();
   };
+
   const handleClose = (v: boolean) => {
     if (!v) {
       reset();
@@ -71,13 +80,16 @@ export const ExportDialog: React.FC<Props> = ({
     }
     onOpenChange(v);
   };
+
   const isWorking =
     progress.phase === "rendering-frames" ||
     progress.phase === "encoding";
+
   const pct =
     progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : 0;
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
@@ -104,11 +116,51 @@ export const ExportDialog: React.FC<Props> = ({
                       : "None"
                   }
                 />
-                <p className="text-[10px] text-muted-foreground pt-2 leading-relaxed">
-                  Export runs fully in your browser — no uploads, no installs.
-                  Long videos take time: expect ~1s per frame to render plus
-                  the video duration for encoding.
-                </p>
+
+                {/* Format selector */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="uppercase text-[10px] tracking-wider text-muted-foreground">
+                    Format
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setFormat("webm")}
+                      className={`px-2 py-0.5 text-[10px] uppercase font-mono brutal-border transition-colors ${
+                        format === "webm"
+                          ? "bg-ink text-paper"
+                          : "bg-paper text-ink hover:bg-concrete"
+                      }`}
+                    >
+                      WebM
+                    </button>
+                    <button
+                      onClick={() => mp4Supported && setFormat("mp4")}
+                      disabled={!mp4Supported}
+                      title={!mp4Supported ? "Requires Chrome or Edge" : undefined}
+                      className={`px-2 py-0.5 text-[10px] uppercase font-mono brutal-border transition-colors ${
+                        format === "mp4"
+                          ? "bg-ink text-paper"
+                          : "bg-paper text-ink hover:bg-concrete"
+                      } ${!mp4Supported ? "opacity-40 cursor-not-allowed" : ""}`}
+                    >
+                      MP4
+                    </button>
+                  </div>
+                </div>
+
+                {format === "mp4" && (
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    MP4 uses H.264 — compatible with Instagram, TikTok, and
+                    YouTube. Faster encoding than WebM.
+                  </p>
+                )}
+                {format === "webm" && (
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Export runs fully in your browser — no uploads, no installs.
+                    Long videos take time: ~1s per frame to render plus video
+                    duration for encoding.
+                  </p>
+                )}
               </div>
             )}
             {progress.phase !== "idle" && (
@@ -158,7 +210,7 @@ export const ExportDialog: React.FC<Props> = ({
                   onClick={handleDownload}
                   className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono uppercase rounded-none"
                 >
-                  <Download className="mr-2 h-4 w-4" /> Download
+                  <Download className="mr-2 h-4 w-4" /> Download {progress.fileExt.toUpperCase()}
                 </Button>
               </>
             )}
@@ -218,6 +270,7 @@ export const ExportDialog: React.FC<Props> = ({
     </>
   );
 };
+
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex items-center justify-between">
     <span className="uppercase text-[10px] tracking-wider text-muted-foreground">
