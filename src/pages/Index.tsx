@@ -42,13 +42,6 @@ const Index = () => {
             <span className="font-mono text-[11px] uppercase tracking-wider bg-voltage text-ink px-3 py-1 brutal-border">
               v0.2 · Internal
             </span>
-            <Button
-              size="sm"
-              className="brutal-border brutal-shadow-sm bg-ember text-white hover:bg-ember/90 font-mono uppercase rounded-none"
-              onClick={() => setExportOpen(true)}
-            >
-              <Download className="mr-2 h-4 w-4" /> Export
-            </Button>
           </div>
         </div>
         {/* Voltage strip */}
@@ -80,6 +73,12 @@ const Index = () => {
             </span>
           </div>
           <PreviewPlayer config={config} />
+          <Button
+            className="w-full brutal-border brutal-shadow bg-ember text-white hover:bg-ember/90 font-mono uppercase rounded-none"
+            onClick={() => setExportOpen(true)}
+          >
+            <Download className="mr-2 h-4 w-4" /> Download WebM
+          </Button>
           <p className="font-mono text-[11px] text-muted-foreground leading-relaxed">
             Live preview renders the same Remotion composition the export pipeline
             will use. Tweak settings on the left — preview updates instantly.

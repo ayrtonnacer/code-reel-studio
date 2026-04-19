@@ -158,9 +158,6 @@ function buildAudioSources(config: SnippetConfig): AudioSource[] {
   if (config.audioDataUrl) {
     sources.push({ dataUrl: config.audioDataUrl, volume: config.audioVolume, fadeOut: config.audioFadeOut });
   }
-  if (config.voiceoverDataUrl) {
-    sources.push({ dataUrl: config.voiceoverDataUrl, volume: config.voiceoverVolume, fadeOut: 0.3 });
-  }
   return sources;
 }
 

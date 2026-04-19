@@ -75,11 +75,6 @@ export interface SnippetConfig {
   audioName: string | null;
   audioVolume: number; // 0..1
   audioFadeOut: number; // seconds
-  // voiceover
-  voiceoverScript: string;
-  voiceoverDataUrl: string | null;
-  voiceoverName: string | null;
-  voiceoverVolume: number; // 0..1
 }
 
 export const DEFAULT_CODE = `def quicksort(arr):
@@ -120,10 +115,6 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   audioName: null,
   audioVolume: 0.8,
   audioFadeOut: 1.5,
-  voiceoverScript: "",
-  voiceoverDataUrl: null,
-  voiceoverName: null,
-  voiceoverVolume: 1.0,
 };
 
 export const FPS = 30;

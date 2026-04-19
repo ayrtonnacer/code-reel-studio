@@ -117,9 +117,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           }}
         />
       )}
-      {config.voiceoverDataUrl && (
-        <Audio src={config.voiceoverDataUrl} volume={config.voiceoverVolume} />
-      )}
 
       {/* Filename / handle bar at top */}
       <div

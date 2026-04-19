@@ -7,7 +7,14 @@
       "Bash(where.exe bun *)",
       "Bash(where.exe node *)",
       "Bash(npm install *)",
-      "Bash(./node_modules/.bin/tsc --noEmit)"
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(gh api *)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/jamiepine/voicebox/refs/heads/main/backend/backends/qwen_custom_voice_backend.py\")",
+      "Bash(.\\\\venv\\\\Scripts\\\\activate)",
+      "Bash(pip install *)",
+      "Bash(./venv/Scripts/pip install *)"
     ]
   }
 }

@@ -17,8 +17,8 @@ import type {
   SnippetConfig,
   Theme,
 } from "@/lib/codesnap-types";
-import { Mic, Music, Upload, X, Loader2 } from "lucide-react";
-import { useRef, useState, useEffect } from "react";
+import { Mic, Upload, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface Props {
@@ -73,19 +73,8 @@ const DIRECTIONS: { value: GradientDirection; label: string }[] = [
   { value: "radial", label: "Radial Glow" },
 ];
 
-const TTS_URL_KEY = "codesnap_tts_url";
-const DEFAULT_TTS_URL = "http://localhost:8001";
-
 export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   const audioInputRef = useRef<HTMLInputElement>(null);
-  const voiceoverInputRef = useRef<HTMLInputElement>(null);
-  const [ttsUrl, setTtsUrl] = useState(() => localStorage.getItem(TTS_URL_KEY) ?? DEFAULT_TTS_URL);
-  const [generating, setGenerating] = useState(false);
-  const [showUrlInput, setShowUrlInput] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem(TTS_URL_KEY, ttsUrl);
-  }, [ttsUrl]);
 
   const handleAudioFile = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) {
@@ -103,70 +92,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
       toast.success("Music loaded", { description: file.name });
     };
     reader.readAsDataURL(file);
-  };
-
-  const applyVoiceover = async (dataUrl: string, name: string) => {
-    // Decode audio to get duration, then extend holdEnd if needed
-    const tmpCtx = new AudioContext();
-    try {
-      const res = await fetch(dataUrl);
-      const buf = await tmpCtx.decodeAudioData(await res.arrayBuffer());
-      const voDuration = buf.duration;
-      const animEnd = config.startDelay + config.code.length / Math.max(1, config.typingSpeed);
-      const needed = voDuration - animEnd;
-      const updates: Partial<typeof config> = { voiceoverDataUrl: dataUrl, voiceoverName: name };
-      if (needed > config.holdEnd) {
-        updates.holdEnd = Math.ceil(needed * 10) / 10;
-        toast.info("Hold extended", {
-          description: `Adjusted to fit ${voDuration.toFixed(1)}s voiceover.`,
-        });
-      }
-      onChange(updates);
-    } finally {
-      tmpCtx.close();
-    }
-  };
-
-  const handleVoiceoverFile = async (file: File) => {
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error("File too large", { description: "Maximum 20MB." });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      await applyVoiceover(reader.result as string, file.name);
-      toast.success("Voiceover loaded", { description: file.name });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleGenerate = async () => {
-    if (!config.voiceoverScript.trim()) {
-      toast.error("Script is empty", { description: "Write a script first." });
-      return;
-    }
-    setGenerating(true);
-    try {
-      const res = await fetch(`${ttsUrl}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: config.voiceoverScript }),
-      });
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-      const { audioDataUrl } = await res.json();
-      await applyVoiceover(audioDataUrl, "voiceover (generated)");
-      toast.success("Voiceover generated");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      const isNetwork = msg.includes("fetch") || msg.includes("Failed");
-      toast.error("Generation failed", {
-        description: isNetwork
-          ? "Local server not running. Start it with: python tts_server.py"
-          : msg,
-      });
-    } finally {
-      setGenerating(false);
-    }
   };
 
   return (
@@ -452,7 +377,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
         <div className="brutal-border bg-concrete p-4 space-y-4">
           <div className="flex items-center justify-between">
             <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
-              <Music className="h-3 w-3" /> Background music
+              <Mic className="h-3 w-3" /> Voiceover
             </Label>
             {config.audioName && (
               <button
@@ -510,98 +435,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           )}
         </div>
 
-        {/* Voiceover block */}
-        <div className="brutal-border bg-concrete p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
-              <Mic className="h-3 w-3" /> Voiceover
-            </Label>
-            {config.voiceoverDataUrl && (
-              <button
-                onClick={() => onChange({ voiceoverDataUrl: null, voiceoverName: null })}
-                className="font-mono text-[10px] uppercase tracking-wider flex items-center gap-1 hover:text-ember"
-              >
-                <X className="h-3 w-3" /> Remove
-              </button>
-            )}
-          </div>
-
-          <Field label="Script">
-            <textarea
-              value={config.voiceoverScript}
-              onChange={(e) => onChange({ voiceoverScript: e.target.value })}
-              rows={4}
-              placeholder="Write the narration for your code reel..."
-              className="w-full font-mono text-xs brutal-border bg-paper p-3 resize-y outline-none focus:ring-1 focus:ring-ink leading-relaxed"
-            />
-          </Field>
-
-          <input
-            ref={voiceoverInputRef}
-            type="file"
-            accept="audio/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleVoiceoverFile(f);
-              e.target.value = "";
-            }}
-          />
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="flex-1 brutal-border bg-ink text-paper py-2.5 px-3 font-mono text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-ember transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mic className="h-3 w-3" />}
-              {generating ? "Generating…" : "Generate (Qwen3)"}
-            </button>
-            <button
-              onClick={() => voiceoverInputRef.current?.click()}
-              className="brutal-border bg-paper text-ink py-2.5 px-3 font-mono text-xs uppercase tracking-wider flex items-center gap-2 hover:bg-concrete transition-colors"
-            >
-              <Upload className="h-3 w-3" /> Upload
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setShowUrlInput((v) => !v)}
-              className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider hover:text-ink"
-            >
-              Server: {ttsUrl}
-            </button>
-          </div>
-          {showUrlInput && (
-            <Input
-              value={ttsUrl}
-              onChange={(e) => setTtsUrl(e.target.value)}
-              className="font-mono text-xs brutal-border rounded-none"
-              placeholder="http://localhost:8001"
-              onBlur={() => setShowUrlInput(false)}
-              autoFocus
-            />
-          )}
-
-          {config.voiceoverName && (
-            <p className="font-mono text-[10px] text-muted-foreground truncate">
-              ✓ {config.voiceoverName}
-            </p>
-          )}
-
-          {config.voiceoverDataUrl && (
-            <Field label={`Volume · ${Math.round(config.voiceoverVolume * 100)}%`}>
-              <Slider
-                value={[config.voiceoverVolume]}
-                min={0}
-                max={1}
-                step={0.05}
-                onValueChange={([v]) => onChange({ voiceoverVolume: v })}
-              />
-            </Field>
-          )}
-        </div>
       </TabsContent>
     </Tabs>
   );
