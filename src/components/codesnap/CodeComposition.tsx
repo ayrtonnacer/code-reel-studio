@@ -111,8 +111,12 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const SCAN_ZOOM   = config.scanZoom;
   const ZOOM_FRAMES = Math.round(fps * 0.45);
 
-  // Frames allocated per line
-  const framesPerLine = Math.max(Math.round(fps / config.scanSpeed), 6);
+  // Two separate speeds:
+  //  readFrames  = frames to sweep one line left→right (from scanSpeed)
+  //  snapFrames  = frames for the fast jump end-of-line → start-of-next-line (fixed ~0.25 s)
+  const readFrames  = Math.max(Math.round(fps / config.scanSpeed), 6);
+  const snapFrames  = Math.round(fps * 0.25); // always fast, independent of scanSpeed
+  const cycleFrames = readFrames + snapFrames; // one full line cycle (read + snap)
 
   const typingEndFrame = Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
@@ -121,93 +125,107 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
-  // How many lines fit in the available time — scan partial set rather than skip entirely
+  // How many lines fit: (n-1) full cycles + 1 read-only for the last line
   const availableForPan = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
-  const scanLines       = Math.min(totalLines, Math.max(1, Math.floor(availableForPan / framesPerLine)));
-  const canScan         = availableForPan >= framesPerLine; // at least 1 line fits
+  const scanLines = Math.min(
+    totalLines,
+    Math.max(1, Math.floor((availableForPan - readFrames) / cycleFrames) + 1)
+  );
+  const canScan = availableForPan >= readFrames;
 
-  const panEndFrame       = panStartFrame + scanLines * framesPerLine;
+  // Total scan frames: (n-1) cycles + last read (no snap after last line)
+  const totalScanFrames = scanLines > 1
+    ? (scanLines - 1) * cycleFrames + readFrames
+    : readFrames;
+  const panEndFrame       = panStartFrame + totalScanFrames;
   const zoomOutStartFrame = panEndFrame;
   const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
 
   const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
 
-  // ── Per-line read position ──────────────────────────────────────────
-  // translateY to centre a line's Y on screen:
-  //   Ty(lineIdx) = H/2 − (codeAreaTop + lineIdx * lineHeight + scrollOffset)
-  // translateX for code-left and code-right:
-  //   Tx_left  = −xCodeLeft            (code left at screen x=0)
-  //   Tx_right = width/SCAN_ZOOM − xCodeRight  (code right at screen x=width)
+  // translateX anchors
   const Tx_left  = -xCodeLeft;
   const Tx_right = width / SCAN_ZOOM - xCodeRight;
 
-  // Within each line: first 15 % = snap Y + reset X, last 85 % = sweep X left→right
-  const SNAP_FRAC = 0.15;
+  // Helper: absolute Y and scroll for a given line index
+  const lineState = (idx: number) => {
+    const scroll   = Math.max(0, idx - maxVisibleLines + 3) * lineHeight;
+    const absY     = codeAreaTop + idx * lineHeight - scroll;
+    const Ty       = height / 2 - absY;
+    return { scroll: -scroll, Ty };
+  };
 
-  let sceneZoom       = 1;
-  let sceneTranslateX = 0;
-  let sceneTranslateY = 0;
+  let sceneZoom        = 1;
+  let sceneTranslateX  = 0;
+  let sceneTranslateY  = 0;
   let effectiveScrollY = typingScrollY;
 
   if (canScan) {
     if (frame < scanStartFrame) {
-      // Pre-scan: typing auto-scroll, no zoom
       effectiveScrollY = typingScrollY;
 
     } else if (frame <= zoomInEndFrame) {
-      // Zoom-in: approach first line from above-left
-      const p = (frame - scanStartFrame) / ZOOM_FRAMES;
-      sceneZoom       = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], clamp);
-      const Ty0       = height / 2 - codeAreaTop; // centres line 0
-      sceneTranslateY = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Ty0], clamp);
-      sceneTranslateX = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], clamp);
+      // Zoom-in to top-left of first code line
+      const { Ty: Ty0 } = lineState(0);
+      sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], clamp);
+      sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Ty0], clamp);
+      sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], clamp);
       effectiveScrollY = 0;
-      void p;
 
     } else if (frame < panEndFrame) {
-      // Scan phase: line-by-line read
       sceneZoom = SCAN_ZOOM;
-      const scanFrame   = frame - panStartFrame;
-      const lineIdx     = Math.min(Math.floor(scanFrame / framesPerLine), totalLines - 1);
-      const frameInLine = scanFrame - lineIdx * framesPerLine;
-      const snapFrames  = Math.round(framesPerLine * SNAP_FRAC);
-      const readFrames  = framesPerLine - snapFrames;
+      const scanFrame = frame - panStartFrame;
 
-      // Scroll card content so lineIdx is always visible in the card
-      const scrollNeeded    = Math.max(0, lineIdx - maxVisibleLines + 3);
-      const scanScrollOffset = scrollNeeded * lineHeight;
-      effectiveScrollY      = -scanScrollOffset;
+      // Determine current line index and phase
+      // Each cycle = readFrames (sweep) + snapFrames (jump), except last line = read only
+      let lineIdx: number;
+      let isSnap: boolean;
+      let frameInPhase: number;
 
-      // Y: snap to this line's centre
-      const prevLineScroll  = Math.max(0, (lineIdx - 1) - maxVisibleLines + 3) * lineHeight;
-      const prevLineAbsY    = codeAreaTop + Math.max(0, lineIdx - 1) * lineHeight - prevLineScroll;
-      const currLineAbsY    = codeAreaTop + lineIdx * lineHeight - scanScrollOffset;
-      const Ty_prev         = height / 2 - prevLineAbsY;
-      const Ty_curr         = height / 2 - currLineAbsY;
+      if (scanLines === 1) {
+        lineIdx      = 0;
+        isSnap       = false;
+        frameInPhase = Math.min(scanFrame, readFrames - 1);
+      } else {
+        const rawCycle   = Math.floor(scanFrame / cycleFrames);
+        lineIdx          = Math.min(rawCycle, scanLines - 1);
+        const inCycle    = scanFrame - rawCycle * cycleFrames;
 
-      sceneTranslateY = frameInLine < snapFrames
-        ? interpolate(frameInLine, [0, snapFrames], [Ty_prev, Ty_curr], clamp)
-        : Ty_curr;
+        if (rawCycle >= scanLines - 1) {
+          // Last line — read only, no snap
+          isSnap       = false;
+          frameInPhase = Math.min(scanFrame - (scanLines - 1) * cycleFrames, readFrames - 1);
+        } else {
+          isSnap       = inCycle >= readFrames;
+          frameInPhase = isSnap ? inCycle - readFrames : inCycle;
+        }
+      }
 
-      // X: left → right sweep during the read portion
-      sceneTranslateX = frameInLine < snapFrames
-        ? Tx_left
-        : interpolate(frameInLine, [snapFrames, snapFrames + readFrames], [Tx_left, Tx_right], clamp);
+      const curr = lineState(lineIdx);
+
+      if (!isSnap) {
+        // ── Read phase: sweep left → right at reading speed ──────────
+        effectiveScrollY = curr.scroll;
+        sceneTranslateY  = curr.Ty;
+        sceneTranslateX  = interpolate(frameInPhase, [0, readFrames], [Tx_left, Tx_right], clamp);
+
+      } else {
+        // ── Snap phase: fast diagonal jump to start of next line ─────
+        const next = lineState(lineIdx + 1);
+        effectiveScrollY = interpolate(frameInPhase, [0, snapFrames], [curr.scroll, next.scroll], clamp);
+        sceneTranslateY  = interpolate(frameInPhase, [0, snapFrames], [curr.Ty,    next.Ty],    clamp);
+        sceneTranslateX  = interpolate(frameInPhase, [0, snapFrames], [Tx_right,   Tx_left],    clamp);
+      }
 
     } else if (frame <= zoomOutEndFrame) {
-      // Zoom-out: return to full view
-      const lastLineIdx  = totalLines - 1;
-      const lastScroll   = Math.max(0, lastLineIdx - maxVisibleLines + 3) * lineHeight;
-      const lastAbsY     = codeAreaTop + lastLineIdx * lineHeight - lastScroll;
-      const Ty_last      = height / 2 - lastAbsY;
-
-      sceneZoom       = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], clamp);
-      sceneTranslateY = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [Ty_last, 0], clamp);
-      sceneTranslateX = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [Tx_right, 0], clamp);
+      // Zoom-out from last scanned line back to full view
+      const last = lineState(scanLines - 1);
+      sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], clamp);
+      sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty,    0], clamp);
+      sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [Tx_right,   0], clamp);
       effectiveScrollY = 0;
 
     } else {
-      // Post-scan: full code visible
       sceneZoom        = 1;
       sceneTranslateX  = 0;
       sceneTranslateY  = 0;
