@@ -56,7 +56,7 @@ const THEMES: { value: Theme; label: string }[] = [
 ];
 
 const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
-  { value: "ember-gradient", label: "Ember Glow" },
+  { value: "ember-gradient", label: "Elow Glow" },
   { value: "voltage-gradient", label: "Voltage" },
   { value: "ink-grid", label: "Ink Grid" },
   { value: "paper-noise", label: "Paper Noise" },
@@ -85,7 +85,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
       });
       return;
     }
-
     const reader = new FileReader();
     reader.onload = () => {
       onChange({
@@ -137,6 +136,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             className="font-mono brutal-border rounded-none"
           />
         </Field>
+
         <Field label="Language">
           <Select
             value={config.language}
@@ -154,6 +154,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </SelectContent>
           </Select>
         </Field>
+
         <Field label="Theme">
           <Select
             value={config.theme}
@@ -171,6 +172,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </SelectContent>
           </Select>
         </Field>
+
         <Field label={`Font size · ${config.fontSize}px`}>
           <Slider
             value={[config.fontSize]}
@@ -180,11 +182,13 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             onValueChange={([v]) => onChange({ fontSize: v })}
           />
         </Field>
+
         <ToggleRow
           label="Line numbers"
           checked={config.showLineNumbers}
           onChange={(v) => onChange({ showLineNumbers: v })}
         />
+
         <ToggleRow
           label="Window chrome"
           checked={config.windowChrome}
@@ -237,6 +241,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
                 }
               />
             </div>
+
             <Field label="Direction">
               <Select
                 value={config.customGradient.direction}
@@ -265,6 +270,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
                 </SelectContent>
               </Select>
             </Field>
+
             <div
               className="h-16 brutal-border"
               style={{
@@ -295,6 +301,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           checked={config.showTitle}
           onChange={(v) => onChange({ showTitle: v })}
         />
+
         {config.showTitle && (
           <Field label="Title">
             <Input
@@ -305,6 +312,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             />
           </Field>
         )}
+
         <Field label="Brand handle">
           <Input
             value={config.brandHandle}
@@ -312,20 +320,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             className="font-mono brutal-border rounded-none bg-concrete cursor-not-allowed opacity-80"
           />
         </Field>
-        <ToggleRow
-          label="Show bottom signature"
-          checked={config.showBottomText}
-          onChange={(v) => onChange({ showBottomText: v })}
-        />
-        {config.showBottomText && (
-          <Field label="Bottom text">
-            <Input
-              value={config.bottomText}
-              onChange={(e) => onChange({ bottomText: e.target.value })}
-              className="font-mono brutal-border rounded-none"
-            />
-          </Field>
-        )}
       </TabsContent>
 
       {/* ANIMATION + AUDIO */}
@@ -339,6 +333,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             onValueChange={([v]) => onChange({ typingSpeed: v })}
           />
         </Field>
+
         <Field label={`Start delay · ${config.startDelay.toFixed(1)}s`}>
           <Slider
             value={[config.startDelay]}
@@ -348,6 +343,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             onValueChange={([v]) => onChange({ startDelay: v })}
           />
         </Field>
+
         <Field label={`Hold at end · ${config.holdEnd.toFixed(1)}s`}>
           <Slider
             value={[config.holdEnd]}
@@ -357,6 +353,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             onValueChange={([v]) => onChange({ holdEnd: v })}
           />
         </Field>
+
         <ToggleRow
           label="Show cursor"
           checked={config.showCursor}
@@ -380,6 +377,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
               </button>
             )}
           </div>
+
           <input
             ref={audioInputRef}
             type="file"
@@ -391,6 +389,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
               e.target.value = "";
             }}
           />
+
           <button
             onClick={() => audioInputRef.current?.click()}
             className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-ember transition-colors"
