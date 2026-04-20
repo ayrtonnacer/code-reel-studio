@@ -1,5 +1,4 @@
 import type { Theme, BackgroundStyle } from "./codesnap-types";
-
 export interface ThemeTokens {
   bg: string;
   text: string;
@@ -14,7 +13,6 @@ export interface ThemeTokens {
   cursor: string;
   border: string;
 }
-
 export const THEMES: Record<Theme, ThemeTokens> = {
   "scale-dark": {
     bg: "#0d1117",
@@ -100,12 +98,24 @@ export const THEMES: Record<Theme, ThemeTokens> = {
     cursor: "#0a0a0a",
     border: "#e5e7eb",
   },
+  "vercel-dark": {
+    bg: "#0a0a0a",
+    text: "#ededed",
+    comment: "#666666",
+    keyword: "#ffffff",
+    string: "#999999",
+    number: "#cccccc",
+    function: "#ededed",
+    variable: "#bbbbbb",
+    punctuation: "#888888",
+    lineNumber: "#444444",
+    cursor: "#ffffff",
+    border: "#1a1a1a",
+  },
 };
-
 export interface BackgroundDef {
   css: React.CSSProperties;
 }
-
 export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
   "ember-gradient": {
     css: {
@@ -145,6 +155,13 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
     // Resolved at render time from config.customGradient
     css: {
       background: "linear-gradient(135deg, #ff5722 0%, #1a1a1a 100%)",
+    },
+  },
+  "vercel-grain": {
+    css: {
+      backgroundColor: "#0a0a0a",
+      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
+      backgroundSize: "200px 200px",
     },
   },
 };
