@@ -348,8 +348,8 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           <Slider
             value={[config.holdEnd]}
             min={0}
-            max={5}
-            step={0.1}
+            max={45}
+            step={0.5}
             onValueChange={([v]) => onChange({ holdEnd: v })}
           />
         </Field>

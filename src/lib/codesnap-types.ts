@@ -96,7 +96,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
     to: "#1a1a1a",
     direction: "135deg",
   },
-  fontSize: 32,
+  fontSize: 24,
   padding: 56,
   showLineNumbers: false,
   windowChrome: true,

@@ -14,7 +14,10 @@
       "Bash(curl -s \"https://raw.githubusercontent.com/jamiepine/voicebox/refs/heads/main/backend/backends/qwen_custom_voice_backend.py\")",
       "Bash(.\\\\venv\\\\Scripts\\\\activate)",
       "Bash(pip install *)",
-      "Bash(./venv/Scripts/pip install *)"
+      "Bash(./venv/Scripts/pip install *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git add *)"
     ]
   }
 }

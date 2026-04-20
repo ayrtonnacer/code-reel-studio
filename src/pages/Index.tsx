@@ -38,11 +38,6 @@ const Index = () => {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] tracking-wide bg-voltage text-ink px-3 py-1 brutal-border">
-              v0.2
-            </span>
-          </div>
         </div>
         {/* Voltage strip */}
         <div className="h-2 bg-ember" />
@@ -74,7 +69,7 @@ const Index = () => {
           </div>
           <PreviewPlayer config={config} />
           <Button
-            className="w-full brutal-border brutal-shadow bg-ember text-white hover:bg-ember/90 font-mono rounded-none"
+            className="w-full brutal-border brutal-shadow bg-white text-black hover:bg-white/90 font-mono rounded-none"
             onClick={() => setExportOpen(true)}
           >
             <Download className="mr-2 h-4 w-4" /> Download WebM

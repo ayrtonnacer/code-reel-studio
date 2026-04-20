@@ -192,7 +192,7 @@ export const ExportDialog: React.FC<Props> = ({
             {progress.phase === "idle" && (
               <Button
                 onClick={handleStart}
-                className="brutal-border brutal-shadow-sm bg-ember text-white hover:bg-ember/90 font-mono rounded-none"
+                className="brutal-border brutal-shadow-sm bg-white text-black hover:bg-white/90 font-mono rounded-none"
               >
                 Start Export
               </Button>
@@ -208,7 +208,7 @@ export const ExportDialog: React.FC<Props> = ({
                 </Button>
                 <Button
                   onClick={handleDownload}
-                  className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono rounded-none"
+                  className="brutal-border brutal-shadow-sm bg-white text-black hover:bg-white/90 font-mono rounded-none"
                 >
                   <Download className="mr-2 h-4 w-4" /> Download {progress.fileExt.toUpperCase()}
                 </Button>
