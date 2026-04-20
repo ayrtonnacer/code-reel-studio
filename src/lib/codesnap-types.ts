@@ -64,7 +64,6 @@ export interface SnippetConfig {
   title: string;
   showTitle: boolean;
   brandHandle: string;
-  brandHashtag: string;
   bottomText: string;
   showBottomText: boolean;
   // audio
@@ -101,11 +100,10 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   holdEnd: 1.5,
   showCursor: true,
   title: "Quicksort in 7 lines",
-  showTitle: false,
-  brandHandle: "@codesnap",
-  brandHashtag: "#code",
+  showTitle: true,
+  brandHandle: "@ayrtonnacer",
   bottomText: "CODE · IN · MOTION",
-  showBottomText: true,
+  showBottomText: false,
   audioDataUrl: null,
   audioName: null,
   audioVolume: 0.8,
