@@ -58,9 +58,9 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.005em;
   }
   ::selection {
     background: rgba(255, 255, 255, 0.2);
@@ -82,9 +82,9 @@
     box-shadow: var(--shadow-brutal-lg);
   }
   .font-display {
-    font-family: 'Inter', -apple-system, system-ui, sans-serif;
-    font-weight: 600;
-    letter-spacing: -0.03em;
+    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
   }
   .font-mono-code {
     font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;

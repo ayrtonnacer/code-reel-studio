@@ -81,7 +81,7 @@ export const PreviewPlayer: React.FC<Props> = ({ config }) => {
             <Button
               variant="outline"
               size="sm"
-              className="brutal-border brutal-shadow-sm font-mono uppercase"
+              className="brutal-border brutal-shadow-sm font-mono"
               onClick={() => { playerRef.current?.seekTo(0); setIsPlaying(true); }}
             >
               <RotateCcw className="mr-1 h-4 w-4" /> Reset
@@ -89,7 +89,7 @@ export const PreviewPlayer: React.FC<Props> = ({ config }) => {
             <Button
               variant="outline"
               size="sm"
-              className="brutal-border brutal-shadow-sm font-mono uppercase"
+              className="brutal-border brutal-shadow-sm font-mono"
               onClick={() => handlePlayPause(playerRef)}
             >
               {isPlaying ? (
@@ -101,7 +101,7 @@ export const PreviewPlayer: React.FC<Props> = ({ config }) => {
             <Button
               variant="outline"
               size="sm"
-              className="brutal-border brutal-shadow-sm font-mono uppercase"
+              className="brutal-border brutal-shadow-sm font-mono"
               onClick={openFullscreen}
             >
               <Maximize className="mr-1 h-4 w-4" /> Fullscreen
@@ -137,14 +137,14 @@ export const PreviewPlayer: React.FC<Props> = ({ config }) => {
               <Button
                 variant="outline"
                 size="sm"
-                className="brutal-border font-mono uppercase bg-black/60 text-white border-white/30 hover:bg-white/10"
+                className="brutal-border font-mono bg-black/60 text-white border-white/30 hover:bg-white/10"
                 onClick={() => { fullscreenPlayerRef.current?.seekTo(0); setIsPlaying(true); }}
               >
                 <RotateCcw className="mr-1 h-4 w-4" /> Reset
               </Button>
               <Button
                 size="sm"
-                className="brutal-border font-mono uppercase bg-ember text-white hover:bg-ember/90"
+                className="brutal-border font-mono bg-ember text-white hover:bg-ember/90"
                 onClick={() => handlePlayPause(fullscreenPlayerRef)}
               >
                 {isPlaying ? (
@@ -156,7 +156,7 @@ export const PreviewPlayer: React.FC<Props> = ({ config }) => {
               <Button
                 variant="outline"
                 size="sm"
-                className="brutal-border font-mono uppercase bg-black/60 text-white border-white/30 hover:bg-white/10"
+                className="brutal-border font-mono bg-black/60 text-white border-white/30 hover:bg-white/10"
                 onClick={closeFullscreen}
               >
                 <Minimize className="mr-1 h-4 w-4" /> Exit

@@ -33,14 +33,14 @@ const Index = () => {
               <h1 className="font-display text-2xl leading-none tracking-tight">
                 CodeSnap Video
               </h1>
-              <p className="font-mono text-[11px] text-muted-foreground mt-1 uppercase tracking-wider">
+              <p className="font-mono text-[11px] text-muted-foreground mt-1 tracking-wide">
                 Code → Vertical Video · TikTok / Reels / Shorts
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[11px] uppercase tracking-wider bg-voltage text-ink px-3 py-1 brutal-border">
-              v0.2 · Internal
+            <span className="font-mono text-[11px] tracking-wide bg-voltage text-ink px-3 py-1 brutal-border">
+              v0.2
             </span>
           </div>
         </div>
@@ -67,14 +67,14 @@ const Index = () => {
         {/* Right column: preview */}
         <aside className="lg:sticky lg:top-28 lg:self-start space-y-4">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-display text-xl uppercase">Preview</h2>
-            <span className="font-mono text-[11px] uppercase tracking-wider bg-ink text-paper px-2 py-1">
+            <h2 className="font-display text-xl">Preview</h2>
+            <span className="font-mono text-[11px] tracking-wide bg-ink text-paper px-2 py-1">
               9:16
             </span>
           </div>
           <PreviewPlayer config={config} />
           <Button
-            className="w-full brutal-border brutal-shadow bg-ember text-white hover:bg-ember/90 font-mono uppercase rounded-none"
+            className="w-full brutal-border brutal-shadow bg-ember text-white hover:bg-ember/90 font-mono rounded-none"
             onClick={() => setExportOpen(true)}
           >
             <Download className="mr-2 h-4 w-4" /> Download WebM
@@ -89,10 +89,10 @@ const Index = () => {
       {/* Footer */}
       <footer className="brutal-border border-b-0 border-l-0 border-r-0 mt-16 py-6">
         <div className="max-w-[1600px] mx-auto px-6 flex items-center justify-between">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span className="font-mono text-[11px] tracking-wide text-muted-foreground">
             Built with Remotion + React
           </span>
-          <span className="font-display text-sm uppercase tracking-widest">
+          <span className="font-display text-sm tracking-wide text-muted-foreground">
             Code · In · Motion
           </span>
         </div>

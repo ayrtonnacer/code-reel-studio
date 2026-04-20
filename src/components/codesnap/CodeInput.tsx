@@ -13,7 +13,7 @@ export const CodeInput: React.FC<Props> = ({ value, onChange }) => {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label className="font-mono text-xs uppercase tracking-wider">
+        <Label className="font-mono text-xs tracking-wide text-muted-foreground">
           Snippet
         </Label>
         <span className="font-mono text-[10px] text-muted-foreground">

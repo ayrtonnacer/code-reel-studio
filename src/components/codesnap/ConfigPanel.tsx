@@ -103,25 +103,25 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
       >
         <TabsTrigger
           value="style"
-          className="font-display uppercase tracking-wide text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Style
         </TabsTrigger>
         <TabsTrigger
           value="background"
-          className="font-display uppercase tracking-wide text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Background
         </TabsTrigger>
         <TabsTrigger
           value="text"
-          className="font-display uppercase tracking-wide text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Text
         </TabsTrigger>
         <TabsTrigger
           value="animation"
-          className="font-display uppercase tracking-wide text-xs rounded-none py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display text-xs rounded-none py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Anim · Audio
         </TabsTrigger>
@@ -218,8 +218,8 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
 
         {config.background === "custom-gradient" && (
           <div className="space-y-4 brutal-border bg-concrete p-4">
-            <Label className="font-mono text-xs uppercase tracking-wider">
-              Custom Gradient
+            <Label className="font-mono text-xs tracking-wide text-muted-foreground">
+              Custom gradient
             </Label>
             <div className="grid grid-cols-2 gap-3">
               <ColorField
@@ -363,7 +363,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
         {/* Audio block */}
         <div className="brutal-border bg-concrete p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
+            <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
               <Mic className="h-3 w-3" /> Voiceover
             </Label>
             {config.audioName && (
@@ -371,7 +371,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
                 onClick={() =>
                   onChange({ audioDataUrl: null, audioName: null })
                 }
-                className="font-mono text-[10px] uppercase tracking-wider flex items-center gap-1 hover:text-ember"
+                className="font-mono text-[10px] tracking-wide flex items-center gap-1 hover:text-ember"
               >
                 <X className="h-3 w-3" /> Remove
               </button>
@@ -392,7 +392,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
 
           <button
             onClick={() => audioInputRef.current?.click()}
-            className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-ember transition-colors"
+            className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember transition-colors"
           >
             <Upload className="h-4 w-4" />
             {config.audioName ?? "Upload audio file"}
@@ -431,7 +431,7 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({
   children,
 }) => (
   <div className="space-y-2">
-    <Label className="font-mono text-xs uppercase tracking-wider">{label}</Label>
+    <Label className="font-mono text-xs tracking-wide text-muted-foreground">{label}</Label>
     {children}
   </div>
 );
@@ -442,7 +442,7 @@ const ToggleRow: React.FC<{
   onChange: (v: boolean) => void;
 }> = ({ label, checked, onChange }) => (
   <div className="flex items-center justify-between brutal-border bg-paper px-4 py-3">
-    <Label className="font-mono text-sm uppercase tracking-wide cursor-pointer">
+    <Label className="font-mono text-sm tracking-wide cursor-pointer">
       {label}
     </Label>
     <Switch checked={checked} onCheckedChange={onChange} />
@@ -455,7 +455,7 @@ const ColorField: React.FC<{
   onChange: (v: string) => void;
 }> = ({ label, value, onChange }) => (
   <div className="space-y-2">
-    <Label className="font-mono text-[10px] uppercase tracking-wider">
+    <Label className="font-mono text-[10px] tracking-wide text-muted-foreground">
       {label}
     </Label>
     <div className="flex gap-2 items-center brutal-border bg-paper p-2">
@@ -469,7 +469,7 @@ const ColorField: React.FC<{
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 font-mono text-xs bg-transparent outline-none uppercase"
+        className="flex-1 font-mono text-xs bg-transparent outline-none"
       />
     </div>
   </div>

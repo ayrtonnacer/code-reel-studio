@@ -95,7 +95,7 @@ export const ExportDialog: React.FC<Props> = ({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="brutal-border rounded-none bg-paper max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display uppercase text-2xl tracking-tight">
+            <DialogTitle className="font-display text-2xl tracking-tight">
               Export
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">
@@ -119,13 +119,13 @@ export const ExportDialog: React.FC<Props> = ({
 
                 {/* Format selector */}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="uppercase text-[10px] tracking-wider text-muted-foreground">
+                  <span className="text-[10px] tracking-wide text-muted-foreground">
                     Format
                   </span>
                   <div className="flex gap-1">
                     <button
                       onClick={() => setFormat("webm")}
-                      className={`px-2 py-0.5 text-[10px] uppercase font-mono brutal-border transition-colors ${
+                      className={`px-2 py-0.5 text-[10px] font-mono brutal-border transition-colors ${
                         format === "webm"
                           ? "bg-ink text-paper"
                           : "bg-paper text-ink hover:bg-concrete"
@@ -137,7 +137,7 @@ export const ExportDialog: React.FC<Props> = ({
                       onClick={() => mp4Supported && setFormat("mp4")}
                       disabled={!mp4Supported}
                       title={!mp4Supported ? "Requires Chrome or Edge" : undefined}
-                      className={`px-2 py-0.5 text-[10px] uppercase font-mono brutal-border transition-colors ${
+                      className={`px-2 py-0.5 text-[10px] font-mono brutal-border transition-colors ${
                         format === "mp4"
                           ? "bg-ink text-paper"
                           : "bg-paper text-ink hover:bg-concrete"
@@ -170,12 +170,12 @@ export const ExportDialog: React.FC<Props> = ({
                     <Loader2 className="h-3 w-3 animate-spin" />
                   )}
                   {progress.phase === "done" && (
-                    <span className="bg-voltage text-ink px-2 py-0.5 brutal-border text-[10px] uppercase">
+                    <span className="bg-voltage text-ink px-2 py-0.5 brutal-border text-[10px]">
                       Ready
                     </span>
                   )}
                   {progress.phase === "error" && (
-                    <span className="bg-destructive text-destructive-foreground px-2 py-0.5 brutal-border text-[10px] uppercase">
+                    <span className="bg-destructive text-destructive-foreground px-2 py-0.5 brutal-border text-[10px]">
                       Error
                     </span>
                   )}
@@ -192,7 +192,7 @@ export const ExportDialog: React.FC<Props> = ({
             {progress.phase === "idle" && (
               <Button
                 onClick={handleStart}
-                className="brutal-border brutal-shadow-sm bg-ember text-white hover:bg-ember/90 font-mono uppercase rounded-none"
+                className="brutal-border brutal-shadow-sm bg-ember text-white hover:bg-ember/90 font-mono rounded-none"
               >
                 Start Export
               </Button>
@@ -202,13 +202,13 @@ export const ExportDialog: React.FC<Props> = ({
                 <Button
                   variant="outline"
                   onClick={() => handleClose(false)}
-                  className="brutal-border font-mono uppercase rounded-none"
+                  className="brutal-border font-mono rounded-none"
                 >
                   Close
                 </Button>
                 <Button
                   onClick={handleDownload}
-                  className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono uppercase rounded-none"
+                  className="brutal-border brutal-shadow-sm bg-voltage text-ink hover:bg-voltage/90 font-mono rounded-none"
                 >
                   <Download className="mr-2 h-4 w-4" /> Download {progress.fileExt.toUpperCase()}
                 </Button>
@@ -218,7 +218,7 @@ export const ExportDialog: React.FC<Props> = ({
               <Button
                 variant="outline"
                 onClick={reset}
-                className="brutal-border font-mono uppercase rounded-none"
+                className="brutal-border font-mono rounded-none"
               >
                 <X className="mr-2 h-4 w-4" /> Reset
               </Button>
@@ -227,7 +227,7 @@ export const ExportDialog: React.FC<Props> = ({
               <Button
                 variant="outline"
                 disabled
-                className="brutal-border font-mono uppercase rounded-none opacity-60"
+                className="brutal-border font-mono rounded-none opacity-60"
               >
                 Working…
               </Button>
@@ -273,7 +273,7 @@ export const ExportDialog: React.FC<Props> = ({
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex items-center justify-between">
-    <span className="uppercase text-[10px] tracking-wider text-muted-foreground">
+    <span className="text-[10px] tracking-wide text-muted-foreground">
       {label}
     </span>
     <span className="font-medium">{value}</span>

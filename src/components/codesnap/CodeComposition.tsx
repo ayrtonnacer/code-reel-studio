@@ -75,8 +75,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   let buffer: LineToken[] = [];
 
   for (const t of visibleTokens) {
-    const parts = t.text.split("
-");
+    const parts = t.text.split("\n");
     parts.forEach((part, idx) => {
       if (part) buffer.push({ text: part, type: t.type });
       if (idx < parts.length - 1) {
@@ -88,8 +87,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   renderedLines.push(buffer);
 
   const lineHeight = config.fontSize * 1.45;
-  const totalLines = config.code.split("
-").length;
+  const totalLines = config.code.split("\n").length;
   const visibleLineCount = renderedLines.length;
 
   // Auto scroll: keep latest line in lower-third of card
@@ -98,7 +96,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const scrollLines = Math.max(0, visibleLineCount - maxVisibleLines + 2);
   const scrollY = -scrollLines * lineHeight;
 
-  const fontScale = "'Inter', -apple-system, sans-serif";
+  const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
 
   return (
     <AbsoluteFill style={bg.css}>
@@ -138,9 +136,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             fontFamily: fontScale,
             color: "rgba(255, 255, 255, 0.4)",
             fontSize: 24,
-            letterSpacing: "0.08em",
-            fontWeight: 600,
-            textTransform: "uppercase",
+            letterSpacing: "0.02em",
+            fontWeight: 500,
           }}
         >
           {config.brandHandle}
@@ -158,14 +155,14 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             zIndex: 15,
             fontFamily: fontScale,
             fontSize: 58,
-            lineHeight: 1.1,
-            letterSpacing: "-0.04em",
+            lineHeight: 1.15,
+            letterSpacing: "-0.02em",
             color: "#fff",
-            fontWeight: 800,
+            fontWeight: 700,
             textAlign: "center",
           }}
         >
-          {config.title}
+          {config.title.charAt(0).toUpperCase() + config.title.slice(1)}
         </div>
       )}
 
