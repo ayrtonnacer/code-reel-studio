@@ -15,23 +15,22 @@ export type Language =
   | "html"
   | "css"
   | "json";
-
 export type Theme =
   | "scale-dark"
   | "synthwave"
   | "github-dark"
   | "monokai"
   | "dracula"
-  | "paper-light";
-
+  | "paper-light"
+  | "vercel-dark";
 export type BackgroundStyle =
   | "ember-gradient"
   | "voltage-gradient"
   | "ink-grid"
   | "paper-noise"
   | "duotone-pop"
-  | "custom-gradient";
-
+  | "custom-gradient"
+  | "vercel-grain";
 export type GradientDirection =
   | "to right"
   | "to bottom"
@@ -40,13 +39,11 @@ export type GradientDirection =
   | "135deg"
   | "45deg"
   | "radial";
-
 export interface CustomGradient {
   from: string; // hex
   to: string; // hex
   direction: GradientDirection;
 }
-
 export interface SnippetConfig {
   code: string;
   language: Language;
@@ -76,22 +73,20 @@ export interface SnippetConfig {
   audioVolume: number; // 0..1
   audioFadeOut: number; // seconds
 }
-
 export const DEFAULT_CODE = `def quicksort(arr):
-    if len(arr) <= 1: return arr
-    pivot = arr[len(arr) // 2]
-    left = [x for x in arr if x < pivot]
-    middle = [x for x in arr if x == pivot]
-    right = [x for x in arr if x > pivot]
-    return quicksort(left) + middle + quicksort(right)
+  if len(arr) <= 1: return arr
+  pivot = arr[len(arr) // 2]
+  left = [x for x in arr if x < pivot]
+  middle = [x for x in arr if x == pivot]
+  right = [x for x in arr if x > pivot]
+  return quicksort(left) + middle + quicksort(right)
 `;
-
 export const DEFAULT_CONFIG: SnippetConfig = {
   code: DEFAULT_CODE,
   language: "python",
   filename: "quicksort.py",
-  theme: "scale-dark",
-  background: "ember-gradient",
+  theme: "vercel-dark",
+  background: "vercel-grain",
   customGradient: {
     from: "#ff5722",
     to: "#1a1a1a",
@@ -116,18 +111,15 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   audioVolume: 0.8,
   audioFadeOut: 1.5,
 };
-
 export const FPS = 30;
 export const VIDEO_WIDTH = 1080;
 export const VIDEO_HEIGHT = 1920;
-
 export function computeDurationFrames(cfg: SnippetConfig): number {
   const chars = cfg.code.length;
   const typingSeconds = chars / Math.max(1, cfg.typingSpeed);
   const total = cfg.startDelay + typingSeconds + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
 }
-
 export function buildBackgroundCss(
   cg: CustomGradient
 ): React.CSSProperties {
