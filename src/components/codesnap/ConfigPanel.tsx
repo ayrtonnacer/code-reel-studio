@@ -348,18 +348,18 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           <Slider
             value={[config.holdEnd]}
             min={0}
-            max={45}
-            step={0.5}
+            max={90}
+            step={1}
             onValueChange={([v]) => onChange({ holdEnd: v })}
           />
         </Field>
 
-        <Field label={`Scan speed · ${config.scanSpeed.toFixed(1)} lines/s`}>
+        <Field label={`Scan speed · ${config.scanSpeed.toFixed(2)} lines/s`}>
           <Slider
             value={[config.scanSpeed]}
-            min={0.2}
+            min={0.05}
             max={3}
-            step={0.1}
+            step={0.05}
             onValueChange={([v]) => onChange({ scanSpeed: v })}
           />
         </Field>
@@ -368,7 +368,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           <Slider
             value={[config.scanZoom]}
             min={2}
-            max={12}
+            max={15}
             step={0.5}
             onValueChange={([v]) => onChange({ scanZoom: v })}
           />

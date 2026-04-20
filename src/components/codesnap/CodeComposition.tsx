@@ -111,20 +111,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const SCAN_ZOOM   = config.scanZoom;
   const ZOOM_FRAMES = Math.round(fps * 0.45);
 
-  // Frames allocated per line (from scanSpeed control)
+  // Frames allocated per line
   const framesPerLine = Math.max(Math.round(fps / config.scanSpeed), 6);
 
-  const typingEndFrame    = Math.round(
+  const typingEndFrame = Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
   );
-  const scanStartFrame    = typingEndFrame + Math.round(fps * 0.35);
-  const zoomInEndFrame    = scanStartFrame + ZOOM_FRAMES;
-  const panStartFrame     = zoomInEndFrame;
-  const panEndFrame       = panStartFrame + totalLines * framesPerLine;
+  const scanStartFrame = typingEndFrame + Math.round(fps * 0.35);
+  const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
+  const panStartFrame  = zoomInEndFrame;
+
+  // How many lines fit in the available time — scan partial set rather than skip entirely
+  const availableForPan = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
+  const scanLines       = Math.min(totalLines, Math.max(1, Math.floor(availableForPan / framesPerLine)));
+  const canScan         = availableForPan >= framesPerLine; // at least 1 line fits
+
+  const panEndFrame       = panStartFrame + scanLines * framesPerLine;
   const zoomOutStartFrame = panEndFrame;
   const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
-
-  const canScan = zoomOutEndFrame <= durationInFrames - Math.round(fps * 0.2);
 
   const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
 

@@ -111,7 +111,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   showTitle: true,
   brandHandle: "@ayrtonnacer",
   scanSpeed: 0.5,
-  scanZoom: 7,
+  scanZoom: 12,
   audioDataUrl: null,
   audioName: null,
   audioVolume: 1.0,
