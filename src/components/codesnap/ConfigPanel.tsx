@@ -18,7 +18,7 @@ import type {
   Theme,
 } from "@/lib/codesnap-types";
 import { Mic, Upload, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { toast } from "sonner";
 
 interface Props {
@@ -52,6 +52,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: "monokai", label: "Monokai" },
   { value: "dracula", label: "Dracula" },
   { value: "paper-light", label: "Paper Light" },
+  { value: "vercel-dark", label: "Vercel Dark" },
 ];
 
 const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
@@ -61,6 +62,7 @@ const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
   { value: "paper-noise", label: "Paper Noise" },
   { value: "duotone-pop", label: "Duotone Pop" },
   { value: "custom-gradient", label: "Custom Gradient" },
+  { value: "vercel-grain", label: "Vercel Grain" },
 ];
 
 const DIRECTIONS: { value: GradientDirection; label: string }[] = [
@@ -83,6 +85,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
       });
       return;
     }
+
     const reader = new FileReader();
     reader.onload = () => {
       onChange({
@@ -134,7 +137,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             className="font-mono brutal-border rounded-none"
           />
         </Field>
-
         <Field label="Language">
           <Select
             value={config.language}
@@ -152,7 +154,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </SelectContent>
           </Select>
         </Field>
-
         <Field label="Theme">
           <Select
             value={config.theme}
@@ -170,7 +171,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </SelectContent>
           </Select>
         </Field>
-
         <Field label={`Font size · ${config.fontSize}px`}>
           <Slider
             value={[config.fontSize]}
@@ -180,7 +180,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             onValueChange={([v]) => onChange({ fontSize: v })}
           />
         </Field>
-
         <ToggleRow
           label="Line numbers"
           checked={config.showLineNumbers}
@@ -306,22 +305,13 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             />
           </Field>
         )}
-
         <Field label="Brand handle">
           <Input
             value={config.brandHandle}
-            onChange={(e) => onChange({ brandHandle: e.target.value })}
-            className="font-mono brutal-border rounded-none"
+            readOnly
+            className="font-mono brutal-border rounded-none bg-concrete cursor-not-allowed opacity-80"
           />
         </Field>
-        <Field label="Hashtag">
-          <Input
-            value={config.brandHashtag}
-            onChange={(e) => onChange({ brandHashtag: e.target.value })}
-            className="font-mono brutal-border rounded-none"
-          />
-        </Field>
-
         <ToggleRow
           label="Show bottom signature"
           checked={config.showBottomText}
@@ -390,7 +380,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
               </button>
             )}
           </div>
-
           <input
             ref={audioInputRef}
             type="file"
@@ -402,7 +391,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
               e.target.value = "";
             }}
           />
-
           <button
             onClick={() => audioInputRef.current?.click()}
             className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-ember transition-colors"
@@ -434,7 +422,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </>
           )}
         </div>
-
       </TabsContent>
     </Tabs>
   );
