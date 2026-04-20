@@ -24,14 +24,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     [config.code, config.language]
   );
 
-  // Total characters typed so far (frame-driven)
   const elapsedSec = frame / fps - config.startDelay;
-  const charsTyped = Math.max(
-    0,
-    Math.floor(elapsedSec * config.typingSpeed)
-  );
+  const charsTyped = Math.max(0, Math.floor(elapsedSec * config.typingSpeed));
 
-  // Build visible substring across tokens
   let remaining = charsTyped;
   const visibleTokens: { text: string; type: string }[] = [];
   for (const t of tokens) {
@@ -49,94 +44,112 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const totalChars = config.code.length;
   const isTyping = charsTyped < totalChars;
 
-  // Cursor blink
   const cursorVisible = Math.floor(frame / (fps * 0.5)) % 2 === 0;
 
-  // Subtle entrance
   const introOpacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
-  const introScale = interpolate(frame, [0, 18], [0.96, 1], { extrapolateRight: "clamp" });
+  const introScale   = interpolate(frame, [0, 18], [0.96, 1], { extrapolateRight: "clamp" });
 
   const colorFor = (type: string): string => {
     switch (type) {
-      case "comment": return theme.comment;
-      case "keyword": return theme.keyword;
-      case "string": return theme.string;
-      case "number": return theme.number;
-      case "function": return theme.function;
-      case "variable": return theme.variable;
+      case "comment":     return theme.comment;
+      case "keyword":     return theme.keyword;
+      case "string":      return theme.string;
+      case "number":      return theme.number;
+      case "function":    return theme.function;
+      case "variable":    return theme.variable;
       case "punctuation": return theme.punctuation;
-      default: return theme.text;
+      default:            return theme.text;
     }
   };
 
-  // Render tokens broken across lines so line numbers align
   type LineToken = { text: string; type: string };
   const renderedLines: LineToken[][] = [];
   let buffer: LineToken[] = [];
-
   for (const t of visibleTokens) {
     const parts = t.text.split("\n");
     parts.forEach((part, idx) => {
       if (part) buffer.push({ text: part, type: t.type });
-      if (idx < parts.length - 1) {
-        renderedLines.push(buffer);
-        buffer = [];
-      }
+      if (idx < parts.length - 1) { renderedLines.push(buffer); buffer = []; }
     });
   }
   renderedLines.push(buffer);
 
-  const lineHeight = config.fontSize * 1.45;
-  const totalLines = config.code.split("\n").length;
+  const lineHeight       = config.fontSize * 1.45;
+  const totalLines       = config.code.split("\n").length;
   const visibleLineCount = renderedLines.length;
 
-  // Auto scroll during typing: keep latest line in lower-third of card
+  // Auto-scroll during typing: keep last line in view
   const cardInnerHeight = height - config.padding * 2 - 200;
   const maxVisibleLines = Math.floor(cardInnerHeight / lineHeight);
-  const scrollLines = Math.max(0, visibleLineCount - maxVisibleLines + 2);
-  const typingScrollY = -scrollLines * lineHeight;
+  const scrollLines     = Math.max(0, visibleLineCount - maxVisibleLines + 2);
+  const typingScrollY   = -scrollLines * lineHeight;
 
-  // ── Zoom + scan phase ────────────────────────────────────────────────
-  const typingEndFrame = Math.round(
+  // ── Zoom-scan effect ─────────────────────────────────────────────────
+  // The code card is centered vertically; derive the Y of the first & last code line.
+  const chromeH        = config.windowChrome ? 46 : 0;
+  const cardH          = Math.min(
+    totalLines * lineHeight + config.padding * 2 + chromeH,
+    height - 420
+  );
+  const cardTop        = (height - cardH) / 2;
+  const codeFirstLineY = cardTop + chromeH + config.padding;
+  const codeLastLineY  = codeFirstLineY + (totalLines - 1) * lineHeight;
+
+  // How much to translateY so that a given original-space y lands at screen centre.
+  // With transformOrigin '10% center' and transform scale(Z) translateY(T):
+  //   screen_y = (orig_y + T − H/2) × Z + H/2
+  //   To place orig_y at screen centre → T = H/2 − orig_y
+  const T_first = height / 2 - codeFirstLineY;
+  const T_last  = height / 2 - codeLastLineY;
+
+  const SCAN_ZOOM   = 2.5;
+  const ZOOM_FRAMES = Math.round(fps * 0.5);   // 0.5 s for zoom-in / zoom-out
+
+  const typingEndFrame    = Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
   );
-  const SCAN_ZOOM = 2.4;
-  const scanStartFrame = typingEndFrame + Math.round(fps * 0.4); // 0.4s pause
-  const zoomInEndFrame = scanStartFrame + Math.round(fps * 0.5); // 0.5s zoom-in
-  const panStartFrame = zoomInEndFrame;
-  const panEndFrame = Math.max(panStartFrame + fps, durationInFrames - Math.round(fps * 0.3));
+  const scanStartFrame    = typingEndFrame + Math.round(fps * 0.4); // 0.4 s pause
+  const zoomInEndFrame    = scanStartFrame + ZOOM_FRAMES;
+  const panStartFrame     = zoomInEndFrame;
+  // Reserve room for zoom-out at the end; pan fills the rest
+  const zoomOutStartFrame = Math.max(
+    panStartFrame + Math.round(fps * 0.5),
+    durationInFrames - ZOOM_FRAMES - Math.round(fps * 0.3)
+  );
+  const panEndFrame       = zoomOutStartFrame;
+  const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
 
-  const isInScanPhase = frame >= scanStartFrame;
+  // Only run the effect if the video is long enough
+  const canScan = zoomOutStartFrame > zoomInEndFrame + Math.round(fps * 0.3);
 
-  // Scene-level zoom applied to everything visual
-  const sceneZoom = isInScanPhase
-    ? interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], {
-        extrapolateLeft: "clamp",
-        extrapolateRight: "clamp",
-      })
+  const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
+
+  const sceneZoom: number = canScan
+    ? frame < scanStartFrame    ? 1
+    : frame <= zoomInEndFrame   ? interpolate(frame, [scanStartFrame, zoomInEndFrame],      [1, SCAN_ZOOM], clamp)
+    : frame < zoomOutStartFrame ? SCAN_ZOOM
+    : frame <= zoomOutEndFrame  ? interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame],  [SCAN_ZOOM, 1], clamp)
+    : 1
     : 1;
 
-  // During scan pan from line 0 down through all lines
-  const maxScanScroll = Math.max(0, (totalLines - maxVisibleLines) * lineHeight);
-  const scanScrollY =
-    frame >= panStartFrame && panEndFrame > panStartFrame && maxScanScroll > 0
-      ? interpolate(frame, [panStartFrame, panEndFrame], [0, -maxScanScroll], {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-        })
-      : 0;
+  // translateY that keeps the focus point (first → last line) centred on screen
+  const sceneTranslateY: number = canScan
+    ? frame < scanStartFrame    ? 0
+    : frame <= zoomInEndFrame   ? interpolate(frame, [scanStartFrame, zoomInEndFrame],  [0,       T_first], clamp)
+    : frame < panEndFrame && panEndFrame > panStartFrame
+                                ? interpolate(frame, [panStartFrame, panEndFrame],      [T_first, T_last],  clamp)
+    : frame <= zoomOutEndFrame  ? interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [T_last, 0],     clamp)
+    : 0
+    : 0;
 
-  // Effective scroll: reset to 0 when scan starts, then pan
-  const effectiveScrollY = isInScanPhase ? scanScrollY : typingScrollY;
+  // During scan reset internal scroll to 0 (show from line 1)
+  const effectiveScrollY = frame >= scanStartFrame ? 0 : typingScrollY;
   // ─────────────────────────────────────────────────────────────────────
 
-  // Title fades out after 1.5s so it doesn't collide with the code
+  // Title fades out at 1.5 s so it never overlaps the code
   const titleOpacity =
     config.showTitle && config.title.trim()
-      ? interpolate(frame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-        })
+      ? interpolate(frame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], clamp)
       : 0;
 
   const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
@@ -149,29 +162,30 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           volume={(f) => {
             if (config.audioFadeOut <= 0) return config.audioVolume;
             const fadeFrames = Math.max(1, Math.round(config.audioFadeOut * fps));
-            const fadeStart = durationInFrames - fadeFrames;
+            const fadeStart  = durationInFrames - fadeFrames;
             const fade =
               f >= fadeStart
-                ? interpolate(f, [fadeStart, durationInFrames], [1, 0], {
-                    extrapolateLeft: "clamp",
-                    extrapolateRight: "clamp",
-                  })
+                ? interpolate(f, [fadeStart, durationInFrames], [1, 0], clamp)
                 : 1;
             return config.audioVolume * fade;
           }}
         />
       )}
 
-      {/* Zoom wrapper — applies scene-level zoom for the scan effect */}
+      {/*
+        Zoom wrapper — transformOrigin '10% center' anchors the zoom to the
+        LEFT side of the frame (where code text starts), so the camera feels
+        like it opens from the left rather than the centre.
+      */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          transform: `scale(${sceneZoom})`,
-          transformOrigin: "center center",
+          transform: `scale(${sceneZoom}) translateY(${sceneTranslateY}px)`,
+          transformOrigin: "10% center",
         }}
       >
-        {/* Brand Watermark */}
+        {/* Brand watermark */}
         <div
           style={{
             position: "absolute",
@@ -197,7 +211,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         </div>
 
-        {/* Title — fades out after 1.5s */}
+        {/* Title — fades out at 1.5 s */}
         {config.showTitle && config.title.trim() && (
           <div
             style={{
@@ -231,7 +245,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             width: width - config.padding * 2,
             maxHeight: height - 420,
             background: theme.bg,
-            border: `1px solid rgba(255, 255, 255, 0.08)`,
+            border: "1px solid rgba(255, 255, 255, 0.08)",
             boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
             overflow: "hidden",
             display: "flex",
@@ -239,7 +253,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             borderRadius: 4,
           }}
         >
-          {/* Window chrome */}
           {config.windowChrome && (
             <div
               style={{
@@ -247,7 +260,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 alignItems: "center",
                 gap: 8,
                 padding: "16px 20px",
-                borderBottom: `1px solid rgba(255, 255, 255, 0.05)`,
+                borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
                 background: "rgba(0, 0, 0, 0.2)",
               }}
             >
@@ -268,7 +281,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             </div>
           )}
 
-          {/* Code area */}
           <div
             style={{
               flex: 1,
@@ -310,7 +322,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                         {t.text}
                       </span>
                     ))}
-                    {/* Cursor on the last visible line while typing */}
                     {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
                       <span
                         style={{
