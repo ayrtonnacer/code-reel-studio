@@ -72,7 +72,7 @@ const Index = () => {
             className="w-full brutal-border brutal-shadow bg-white text-black hover:bg-white/90 font-mono rounded-none"
             onClick={() => setExportOpen(true)}
           >
-            <Download className="mr-2 h-4 w-4" /> Download WebM
+            <Download className="mr-2 h-4 w-4" /> Download
           </Button>
           <p className="font-mono text-[11px] text-muted-foreground leading-relaxed">
             Live preview renders the same Remotion composition the export pipeline

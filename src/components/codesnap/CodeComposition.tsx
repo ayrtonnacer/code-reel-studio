@@ -90,11 +90,54 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const totalLines = config.code.split("\n").length;
   const visibleLineCount = renderedLines.length;
 
-  // Auto scroll: keep latest line in lower-third of card
-  const cardInnerHeight = height - config.padding * 2 - 200; // approx
+  // Auto scroll during typing: keep latest line in lower-third of card
+  const cardInnerHeight = height - config.padding * 2 - 200;
   const maxVisibleLines = Math.floor(cardInnerHeight / lineHeight);
   const scrollLines = Math.max(0, visibleLineCount - maxVisibleLines + 2);
-  const scrollY = -scrollLines * lineHeight;
+  const typingScrollY = -scrollLines * lineHeight;
+
+  // ── Zoom + scan phase ────────────────────────────────────────────────
+  const typingEndFrame = Math.round(
+    (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
+  );
+  const SCAN_ZOOM = 2.4;
+  const scanStartFrame = typingEndFrame + Math.round(fps * 0.4); // 0.4s pause
+  const zoomInEndFrame = scanStartFrame + Math.round(fps * 0.5); // 0.5s zoom-in
+  const panStartFrame = zoomInEndFrame;
+  const panEndFrame = Math.max(panStartFrame + fps, durationInFrames - Math.round(fps * 0.3));
+
+  const isInScanPhase = frame >= scanStartFrame;
+
+  // Scene-level zoom applied to everything visual
+  const sceneZoom = isInScanPhase
+    ? interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      })
+    : 1;
+
+  // During scan pan from line 0 down through all lines
+  const maxScanScroll = Math.max(0, (totalLines - maxVisibleLines) * lineHeight);
+  const scanScrollY =
+    frame >= panStartFrame && panEndFrame > panStartFrame && maxScanScroll > 0
+      ? interpolate(frame, [panStartFrame, panEndFrame], [0, -maxScanScroll], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : 0;
+
+  // Effective scroll: reset to 0 when scan starts, then pan
+  const effectiveScrollY = isInScanPhase ? scanScrollY : typingScrollY;
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Title fades out after 1.5s so it doesn't collide with the code
+  const titleOpacity =
+    config.showTitle && config.title.trim()
+      ? interpolate(frame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : 0;
 
   const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
 
@@ -104,6 +147,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         <Audio
           src={config.audioDataUrl}
           volume={(f) => {
+            if (config.audioFadeOut <= 0) return config.audioVolume;
             const fadeFrames = Math.max(1, Math.round(config.audioFadeOut * fps));
             const fadeStart = durationInFrames - fadeFrames;
             const fade =
@@ -118,161 +162,172 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         />
       )}
 
-      {/* Brand Watermark */}
+      {/* Zoom wrapper — applies scene-level zoom for the scan effect */}
       <div
         style={{
           position: "absolute",
-          top: 60,
-          left: 0,
-          right: 0,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 20,
+          inset: 0,
+          transform: `scale(${sceneZoom})`,
+          transformOrigin: "center center",
         }}
       >
-        <div
-          style={{
-            fontFamily: fontScale,
-            color: "rgba(255, 255, 255, 0.4)",
-            fontSize: 24,
-            letterSpacing: "0.02em",
-            fontWeight: 500,
-          }}
-        >
-          {config.brandHandle}
-        </div>
-      </div>
-
-      {/* Optional title above the card */}
-      {config.showTitle && config.title.trim() && (
+        {/* Brand Watermark */}
         <div
           style={{
             position: "absolute",
-            top: 200,
-            left: 80,
-            right: 80,
-            zIndex: 15,
-            fontFamily: fontScale,
-            fontSize: 58,
-            lineHeight: 1.15,
-            letterSpacing: "-0.02em",
-            color: "#fff",
-            fontWeight: 700,
-            textAlign: "center",
+            top: 60,
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 20,
           }}
         >
-          {config.title.charAt(0).toUpperCase() + config.title.slice(1)}
-        </div>
-      )}
-
-      {/* Code card */}
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: `translate(-50%, -50%) scale(${introScale})`,
-          opacity: introOpacity,
-          width: width - config.padding * 2,
-          maxHeight: height - 420,
-          background: theme.bg,
-          border: `1px solid rgba(255, 255, 255, 0.08)`,
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          borderRadius: 4,
-        }}
-      >
-        {/* Window chrome */}
-        {config.windowChrome && (
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "16px 20px",
-              borderBottom: `1px solid rgba(255, 255, 255, 0.05)`,
-              background: "rgba(0, 0, 0, 0.2)",
+              fontFamily: fontScale,
+              color: "rgba(255, 255, 255, 0.4)",
+              fontSize: 24,
+              letterSpacing: "0.02em",
+              fontWeight: 500,
             }}
           >
-            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ff5f56" }} />
-            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ffbd2e" }} />
-            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#27c93f" }} />
-            <div
-              style={{
-                marginLeft: 16,
-                fontFamily: "'JetBrains Mono', monospace",
-                color: "rgba(255, 255, 255, 0.4)",
-                fontSize: 18,
-                fontWeight: 400,
-              }}
-            >
-              {config.filename}
-            </div>
+            {config.brandHandle}
+          </div>
+        </div>
+
+        {/* Title — fades out after 1.5s */}
+        {config.showTitle && config.title.trim() && (
+          <div
+            style={{
+              position: "absolute",
+              top: 200,
+              left: 80,
+              right: 80,
+              zIndex: 15,
+              fontFamily: fontScale,
+              fontSize: 58,
+              lineHeight: 1.15,
+              letterSpacing: "-0.02em",
+              color: "#fff",
+              fontWeight: 700,
+              textAlign: "center",
+              opacity: titleOpacity,
+            }}
+          >
+            {config.title.charAt(0).toUpperCase() + config.title.slice(1)}
           </div>
         )}
 
-        {/* Code area */}
+        {/* Code card */}
         <div
           style={{
-            flex: 1,
-            padding: config.padding,
-            position: "relative",
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: `translate(-50%, -50%) scale(${introScale})`,
+            opacity: introOpacity,
+            width: width - config.padding * 2,
+            maxHeight: height - 420,
+            background: theme.bg,
+            border: `1px solid rgba(255, 255, 255, 0.08)`,
+            boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: 4,
           }}
         >
+          {/* Window chrome */}
+          {config.windowChrome && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "16px 20px",
+                borderBottom: `1px solid rgba(255, 255, 255, 0.05)`,
+                background: "rgba(0, 0, 0, 0.2)",
+              }}
+            >
+              <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ff5f56" }} />
+              <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ffbd2e" }} />
+              <div style={{ width: 12, height: 12, borderRadius: 999, background: "#27c93f" }} />
+              <div
+                style={{
+                  marginLeft: 16,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: "rgba(255, 255, 255, 0.4)",
+                  fontSize: 18,
+                  fontWeight: 400,
+                }}
+              >
+                {config.filename}
+              </div>
+            </div>
+          )}
+
+          {/* Code area */}
           <div
             style={{
-              transform: `translateY(${scrollY}px)`,
-              transition: "none",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: config.fontSize,
-              lineHeight: `${lineHeight}px`,
-              color: theme.text,
-              whiteSpace: "pre",
+              flex: 1,
+              padding: config.padding,
+              position: "relative",
+              overflow: "hidden",
             }}
           >
-            {renderedLines.map((lineTokens, lineIdx) => (
-              <div key={lineIdx} style={{ display: "flex", minHeight: lineHeight }}>
-                {config.showLineNumbers && (
-                  <span
-                    style={{
-                      color: "rgba(255, 255, 255, 0.2)",
-                      width: `${String(totalLines).length + 1}ch`,
-                      textAlign: "right",
-                      paddingRight: 24,
-                      userSelect: "none",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {lineIdx + 1}
-                  </span>
-                )}
-                <span style={{ flex: 1 }}>
-                  {lineTokens.map((t, ti) => (
-                    <span key={ti} style={{ color: colorFor(t.type) }}>
-                      {t.text}
-                    </span>
-                  ))}
-                  {/* Cursor on the last visible line while typing */}
-                  {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
+            <div
+              style={{
+                transform: `translateY(${effectiveScrollY}px)`,
+                transition: "none",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: config.fontSize,
+                lineHeight: `${lineHeight}px`,
+                color: theme.text,
+                whiteSpace: "pre",
+              }}
+            >
+              {renderedLines.map((lineTokens, lineIdx) => (
+                <div key={lineIdx} style={{ display: "flex", minHeight: lineHeight }}>
+                  {config.showLineNumbers && (
                     <span
                       style={{
-                        display: "inline-block",
-                        width: 2,
-                        height: config.fontSize * 1.1,
-                        background: theme.cursor,
-                        verticalAlign: "middle",
-                        marginLeft: 1,
-                        opacity: cursorVisible ? 1 : 0,
+                        color: "rgba(255, 255, 255, 0.2)",
+                        width: `${String(totalLines).length + 1}ch`,
+                        textAlign: "right",
+                        paddingRight: 24,
+                        userSelect: "none",
+                        flexShrink: 0,
                       }}
-                    />
+                    >
+                      {lineIdx + 1}
+                    </span>
                   )}
-                </span>
-              </div>
-            ))}
+                  <span style={{ flex: 1 }}>
+                    {lineTokens.map((t, ti) => (
+                      <span key={ti} style={{ color: colorFor(t.type) }}>
+                        {t.text}
+                      </span>
+                    ))}
+                    {/* Cursor on the last visible line while typing */}
+                    {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: 2,
+                          height: config.fontSize * 1.1,
+                          background: theme.cursor,
+                          verticalAlign: "middle",
+                          marginLeft: 1,
+                          opacity: cursorVisible ? 1 : 0,
+                        }}
+                      />
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

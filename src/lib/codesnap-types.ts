@@ -109,8 +109,8 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   brandHandle: "@ayrtonnacer",
   audioDataUrl: null,
   audioName: null,
-  audioVolume: 0.8,
-  audioFadeOut: 1.5,
+  audioVolume: 1.0,
+  audioFadeOut: 0,
 };
 
 export const FPS = 30;
