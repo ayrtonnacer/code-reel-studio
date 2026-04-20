@@ -4,27 +4,33 @@ import type { SnippetConfig } from "@/lib/codesnap-types";
 import { buildBackgroundCss } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
+
 interface Props {
   config: SnippetConfig;
 }
+
 export const CodeComposition: React.FC<Props> = ({ config }) => {
   const frame = useCurrentFrame();
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const theme = THEMES[config.theme];
+
   const bg =
     config.background === "custom-gradient"
       ? { css: buildBackgroundCss(config.customGradient) }
       : BACKGROUNDS[config.background];
+
   const tokens = useMemo(
     () => tokenize(config.code, config.language),
     [config.code, config.language]
   );
+
   // Total characters typed so far (frame-driven)
   const elapsedSec = frame / fps - config.startDelay;
   const charsTyped = Math.max(
     0,
     Math.floor(elapsedSec * config.typingSpeed)
   );
+
   // Build visible substring across tokens
   let remaining = charsTyped;
   const visibleTokens: { text: string; type: string }[] = [];
@@ -39,16 +45,22 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       break;
     }
   }
+
   const totalChars = config.code.length;
   const isTyping = charsTyped < totalChars;
+
   // Cursor blink
   const cursorVisible = Math.floor(frame / (fps * 0.5)) % 2 === 0;
+
   // Subtle entrance
   const introOpacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
   const introScale = interpolate(frame, [0, 18], [0.96, 1], { extrapolateRight: "clamp" });
+
   // Render visible tokens with line numbers if enabled
   const visibleText = visibleTokens.map((t) => t.text).join("");
-  const visibleLines = visibleText.split("\n");
+  const visibleLines = visibleText.split("
+");
+
   const colorFor = (type: string): string => {
     switch (type) {
       case "comment": return theme.comment;
@@ -61,12 +73,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       default: return theme.text;
     }
   };
+
   // Render tokens broken across lines so line numbers align
   type LineToken = { text: string; type: string };
   const renderedLines: LineToken[][] = [];
   let buffer: LineToken[] = [];
+
   for (const t of visibleTokens) {
-    const parts = t.text.split("\n");
+    const parts = t.text.split("
+");
     parts.forEach((part, idx) => {
       if (part) buffer.push({ text: part, type: t.type });
       if (idx < parts.length - 1) {
@@ -76,14 +91,20 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     });
   }
   renderedLines.push(buffer);
+
   const lineHeight = config.fontSize * 1.45;
-  const totalLines = config.code.split("\n").length;
+  const totalLines = config.code.split("
+").length;
   const visibleLineCount = renderedLines.length;
+
   // Auto scroll: keep latest line in lower-third of card
   const cardInnerHeight = height - config.padding * 2 - 200; // approx
   const maxVisibleLines = Math.floor(cardInnerHeight / lineHeight);
   const scrollLines = Math.max(0, visibleLineCount - maxVisibleLines + 2);
   const scrollY = -scrollLines * lineHeight;
+
+  const fontScale = "'Scale Variable', 'Inter', -apple-system, sans-serif";
+
   return (
     <AbsoluteFill style={bg.css}>
       {config.audioDataUrl && (
@@ -103,7 +124,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           }}
         />
       )}
-      {/* Filename / handle bar at top */}
+
+      {/* Handle bar at top */}
       <div
         style={{
           position: "absolute",
@@ -111,7 +133,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           left: 0,
           right: 0,
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "center",
           alignItems: "center",
           padding: "0 60px",
           zIndex: 20,
@@ -119,56 +141,43 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       >
         <div
           style={{
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: fontScale,
             color: "#fff",
             fontSize: 28,
             letterSpacing: "0.02em",
             background: "rgba(255, 255, 255, 0.05)",
             padding: "10px 24px",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
-            boxShadow: "0 0 20px rgba(255, 255, 255, 0.1)",
+            border: "1px solid rgba(255, 255, 255, 0.15)",
+            backdropFilter: "blur(8px)",
             fontWeight: 500,
           }}
         >
           {config.brandHandle}
         </div>
-        <div
-          style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            color: "#fff",
-            fontSize: 24,
-            background: "rgba(255, 255, 255, 0.08)",
-            padding: "8px 20px",
-            border: "1px solid rgba(255, 255, 255, 0.15)",
-            fontWeight: 400,
-            letterSpacing: "0.05em",
-          }}
-        >
-          {config.brandHashtag}
-        </div>
       </div>
+
       {/* Optional title above the card */}
       {config.showTitle && config.title.trim() && (
         <div
           style={{
             position: "absolute",
-            top: 180,
+            top: 200,
             left: 60,
             right: 60,
             zIndex: 15,
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 48,
-            lineHeight: 1.2,
-            letterSpacing: "-0.01em",
+            fontFamily: fontScale,
+            fontSize: 54,
+            lineHeight: 1.1,
+            letterSpacing: "-0.03em",
             color: "#fff",
-            textTransform: "uppercase",
-            textShadow: "0 0 30px rgba(255, 255, 255, 0.3)",
             fontWeight: 700,
+            textAlign: "center",
           }}
         >
           {config.title}
         </div>
       )}
+
       {/* Code card */}
       <div
         style={{
@@ -178,13 +187,14 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           transform: `translate(-50%, -50%) scale(${introScale})`,
           opacity: introOpacity,
           width: width - config.padding * 2,
-          maxHeight: height - 320,
+          maxHeight: height - 420,
           background: theme.bg,
-          border: `2px solid rgba(255, 255, 255, 0.1)`,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+          border: `1px solid rgba(255, 255, 255, 0.08)`,
+          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          borderRadius: 4,
         }}
       >
         {/* Window chrome */}
@@ -193,27 +203,29 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "18px 24px",
-              borderBottom: `1px solid ${theme.border}`,
-              background: theme.bg,
+              gap: 8,
+              padding: "16px 20px",
+              borderBottom: `1px solid rgba(255, 255, 255, 0.05)`,
+              background: "rgba(0, 0, 0, 0.2)",
             }}
           >
-            <div style={{ width: 14, height: 14, borderRadius: 999, background: "rgba(255, 255, 255, 0.15)" }} />
-            <div style={{ width: 14, height: 14, borderRadius: 999, background: "rgba(255, 255, 255, 0.12)" }} />
-            <div style={{ width: 14, height: 14, borderRadius: 999, background: "rgba(255, 255, 255, 0.09)" }} />
+            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ff5f56" }} />
+            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ffbd2e" }} />
+            <div style={{ width: 12, height: 12, borderRadius: 999, background: "#27c93f" }} />
             <div
               style={{
                 marginLeft: 16,
                 fontFamily: "'JetBrains Mono', monospace",
-                color: theme.comment,
-                fontSize: 20,
+                color: "rgba(255, 255, 255, 0.4)",
+                fontSize: 18,
+                fontWeight: 400,
               }}
             >
               {config.filename}
             </div>
           </div>
         )}
+
         {/* Code area */}
         <div
           style={{
@@ -239,10 +251,10 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 {config.showLineNumbers && (
                   <span
                     style={{
-                      color: theme.lineNumber,
+                      color: "rgba(255, 255, 255, 0.2)",
                       width: `${String(totalLines).length + 1}ch`,
                       textAlign: "right",
-                      paddingRight: 16,
+                      paddingRight: 24,
                       userSelect: "none",
                       flexShrink: 0,
                     }}
@@ -261,11 +273,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                     <span
                       style={{
                         display: "inline-block",
-                        width: config.fontSize * 0.55,
-                        height: config.fontSize,
+                        width: 2,
+                        height: config.fontSize * 1.1,
                         background: theme.cursor,
-                        verticalAlign: "text-bottom",
-                        marginLeft: 2,
+                        verticalAlign: "middle",
+                        marginLeft: 1,
                         opacity: cursorVisible ? 1 : 0,
                       }}
                     />
@@ -276,6 +288,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         </div>
       </div>
+
       {/* Bottom signature */}
       {config.showBottomText && config.bottomText.trim() && (
         <div
@@ -285,13 +298,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             left: 0,
             right: 0,
             textAlign: "center",
-            fontFamily: "'JetBrains Mono', monospace",
-            color: "#fff",
-            fontSize: 28,
-            letterSpacing: "0.15em",
-            textTransform: "uppercase",
-            textShadow: "0 0 20px rgba(255, 255, 255, 0.3)",
-            fontWeight: 300,
+            fontFamily: fontScale,
+            color: "rgba(255, 255, 255, 0.6)",
+            fontSize: 24,
+            letterSpacing: "0.05em",
+            fontWeight: 400,
           }}
         >
           {config.bottomText}
