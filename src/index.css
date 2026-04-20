@@ -2,84 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Brutalist Pop design system — high contrast, electric accents, monospace soul */
+/* Clean Dark Design System — inspired by Scale AI / Vercel */
 
 @layer base {
   :root {
-    /* Core palette */
-    --background: 0 0% 100%;
-    --foreground: 0 0% 4%;
-
-    --ink: 0 0% 4%;            /* near-black */
-    --paper: 0 0% 100%;        /* pure white */
-    --ember: 14 100% 57%;      /* #ff5722 electric orange */
-    --voltage: 53 100% 52%;    /* #ffeb3b electric yellow */
-    --concrete: 0 0% 96%;      /* off-white surface */
-    --steel: 0 0% 88%;         /* hairline */
-
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 4%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 4%;
-
-    --primary: 14 100% 57%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 4%;
-
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 32%;
-
-    --accent: 53 100% 52%;
-    --accent-foreground: 0 0% 4%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 0 0% 4%;
-    --input: 0 0% 88%;
-    --ring: 14 100% 57%;
-
-    --radius: 0px;
-
-    /* Brutalist shadow */
-    --shadow-brutal: 6px 6px 0 0 hsl(var(--ink));
-    --shadow-brutal-sm: 3px 3px 0 0 hsl(var(--ink));
-    --shadow-brutal-lg: 10px 10px 0 0 hsl(var(--ink));
-
-    /* Sidebar (unused but kept) */
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 0 0% 4%;
-    --sidebar-primary: 14 100% 57%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 96%;
-    --sidebar-accent-foreground: 0 0% 4%;
-    --sidebar-border: 0 0% 4%;
-    --sidebar-ring: 14 100% 57%;
-  }
-
-  .dark {
-    --background: 0 0% 4%;
+    /* Pure Dark palette */
+    --background: 0 0% 0%;
     --foreground: 0 0% 100%;
-    --card: 0 0% 4%;
+    
+    --ink: 0 0% 100%;
+    --paper: 0 0% 6%; /* deep gray surface */
+    --concrete: 0 0% 10%; /* slightly lighter gray */
+    --steel: 0 0% 18%; /* hairline/border gray */
+    
+    --ember: 0 0% 100%; /* Neutral accent by default */
+    --voltage: 0 0% 90%;
+    
+    --card: 0 0% 6%;
     --card-foreground: 0 0% 100%;
-    --popover: 0 0% 4%;
+    
+    --popover: 0 0% 8%;
     --popover-foreground: 0 0% 100%;
-    --primary: 14 100% 57%;
-    --primary-foreground: 0 0% 4%;
+    
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 0 0% 68%;
-    --accent: 53 100% 52%;
-    --accent-foreground: 0 0% 4%;
-    --destructive: 0 62% 30%;
+    
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+    
+    --accent: 0 0% 100%;
+    --accent-foreground: 0 0% 0%;
+    
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 100%;
+    
+    --border: 0 0% 15%;
     --input: 0 0% 12%;
-    --ring: 14 100% 57%;
+    --ring: 0 0% 40%;
+    
+    --radius: 6px;
+    
+    /* Soft shadows */
+    --shadow-brutal: 0 4px 20px rgba(0, 0, 0, 0.5);
+    --shadow-brutal-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+    --shadow-brutal-lg: 0 10px 40px rgba(0, 0, 0, 0.7);
   }
 }
 
@@ -87,22 +56,21 @@
   * {
     @apply border-border;
   }
-
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
   }
-
   ::selection {
-    background: hsl(var(--voltage));
-    color: hsl(var(--ink));
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
   }
 }
 
 @layer components {
   .brutal-border {
-    @apply border-2 border-foreground;
+    @apply border border-white/10;
   }
   .brutal-shadow {
     box-shadow: var(--shadow-brutal);
@@ -114,14 +82,30 @@
     box-shadow: var(--shadow-brutal-lg);
   }
   .font-display {
-    font-family: 'Archivo Black', system-ui, sans-serif;
-    letter-spacing: -0.02em;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.03em;
   }
   .font-mono-code {
     font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   }
 }
 
-/* Hide scrollbars in code preview but keep scroll */
+/* Scrollbar styling for dark mode */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
