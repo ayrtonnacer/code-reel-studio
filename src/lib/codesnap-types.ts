@@ -109,7 +109,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   title: "Quicksort in 7 lines",
   showTitle: true,
   brandHandle: "@ayrtonnacer",
-  scanSpeed: 0.7,
+  scanSpeed: 0.5,
   audioDataUrl: null,
   audioName: null,
   audioVolume: 1.0,
