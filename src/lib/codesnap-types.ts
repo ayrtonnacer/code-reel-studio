@@ -71,6 +71,7 @@ export interface SnippetConfig {
   brandHandle: string;
   // scan effect
   scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
+  scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
   // audio
   audioDataUrl: string | null;
   audioName: string | null;
@@ -110,6 +111,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   showTitle: true,
   brandHandle: "@ayrtonnacer",
   scanSpeed: 0.5,
+  scanZoom: 7,
   audioDataUrl: null,
   audioName: null,
   audioVolume: 1.0,

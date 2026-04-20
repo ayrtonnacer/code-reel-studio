@@ -364,6 +364,16 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           />
         </Field>
 
+        <Field label={`Scan zoom · ${config.scanZoom.toFixed(1)}×`}>
+          <Slider
+            value={[config.scanZoom]}
+            min={2}
+            max={12}
+            step={0.5}
+            onValueChange={([v]) => onChange({ scanZoom: v })}
+          />
+        </Field>
+
         <ToggleRow
           label="Show cursor"
           checked={config.showCursor}

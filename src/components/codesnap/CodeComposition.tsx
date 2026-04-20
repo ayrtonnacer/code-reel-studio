@@ -108,7 +108,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const xCodeLeft  = config.padding * 2;          // ~112 px
   const xCodeRight = width - config.padding * 2;  // ~968 px
 
-  const SCAN_ZOOM   = 4.5;
+  const SCAN_ZOOM   = config.scanZoom;
   const ZOOM_FRAMES = Math.round(fps * 0.45);
 
   // Frames allocated per line (from scanSpeed control)
