@@ -12,8 +12,8 @@ interface Props {
 export const CodeComposition: React.FC<Props> = ({ config }) => {
   const frame = useCurrentFrame();
   const { fps, width, height, durationInFrames } = useVideoConfig();
-  const theme = THEMES[config.theme];
 
+  const theme = THEMES[config.theme];
   const bg =
     config.background === "custom-gradient"
       ? { css: buildBackgroundCss(config.customGradient) }
@@ -55,11 +55,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   // Subtle entrance
   const introOpacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
   const introScale = interpolate(frame, [0, 18], [0.96, 1], { extrapolateRight: "clamp" });
-
-  // Render visible tokens with line numbers if enabled
-  const visibleText = visibleTokens.map((t) => t.text).join("");
-  const visibleLines = visibleText.split("
-");
 
   const colorFor = (type: string): string => {
     switch (type) {
@@ -103,7 +98,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const scrollLines = Math.max(0, visibleLineCount - maxVisibleLines + 2);
   const scrollY = -scrollLines * lineHeight;
 
-  const fontScale = "'Scale Variable', 'Inter', -apple-system, sans-serif";
+  const fontScale = "'Inter', -apple-system, sans-serif";
 
   return (
     <AbsoluteFill style={bg.css}>
@@ -125,7 +120,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         />
       )}
 
-      {/* Handle bar at top */}
+      {/* Brand Watermark */}
       <div
         style={{
           position: "absolute",
@@ -135,21 +130,17 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          padding: "0 60px",
           zIndex: 20,
         }}
       >
         <div
           style={{
             fontFamily: fontScale,
-            color: "#fff",
-            fontSize: 28,
-            letterSpacing: "0.02em",
-            background: "rgba(255, 255, 255, 0.05)",
-            padding: "10px 24px",
-            border: "1px solid rgba(255, 255, 255, 0.15)",
-            backdropFilter: "blur(8px)",
-            fontWeight: 500,
+            color: "rgba(255, 255, 255, 0.4)",
+            fontSize: 24,
+            letterSpacing: "0.08em",
+            fontWeight: 600,
+            textTransform: "uppercase",
           }}
         >
           {config.brandHandle}
@@ -162,15 +153,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           style={{
             position: "absolute",
             top: 200,
-            left: 60,
-            right: 60,
+            left: 80,
+            right: 80,
             zIndex: 15,
             fontFamily: fontScale,
-            fontSize: 54,
+            fontSize: 58,
             lineHeight: 1.1,
-            letterSpacing: "-0.03em",
+            letterSpacing: "-0.04em",
             color: "#fff",
-            fontWeight: 700,
+            fontWeight: 800,
             textAlign: "center",
           }}
         >
@@ -288,26 +279,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         </div>
       </div>
-
-      {/* Bottom signature */}
-      {config.showBottomText && config.bottomText.trim() && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: 60,
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            fontFamily: fontScale,
-            color: "rgba(255, 255, 255, 0.6)",
-            fontSize: 24,
-            letterSpacing: "0.05em",
-            fontWeight: 400,
-          }}
-        >
-          {config.bottomText}
-        </div>
-      )}
     </AbsoluteFill>
   );
 };
