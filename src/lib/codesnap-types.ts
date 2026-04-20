@@ -69,6 +69,8 @@ export interface SnippetConfig {
   title: string;
   showTitle: boolean;
   brandHandle: string;
+  // scan effect
+  scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
   // audio
   audioDataUrl: string | null;
   audioName: string | null;
@@ -107,6 +109,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   title: "Quicksort in 7 lines",
   showTitle: true,
   brandHandle: "@ayrtonnacer",
+  scanSpeed: 0.7,
   audioDataUrl: null,
   audioName: null,
   audioVolume: 1.0,

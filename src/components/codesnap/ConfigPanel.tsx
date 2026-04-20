@@ -354,6 +354,16 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           />
         </Field>
 
+        <Field label={`Scan speed · ${config.scanSpeed.toFixed(1)} lines/s`}>
+          <Slider
+            value={[config.scanSpeed]}
+            min={0.2}
+            max={3}
+            step={0.1}
+            onValueChange={([v]) => onChange({ scanSpeed: v })}
+          />
+        </Field>
+
         <ToggleRow
           label="Show cursor"
           checked={config.showCursor}
