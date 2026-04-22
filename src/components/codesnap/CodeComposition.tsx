@@ -145,7 +145,22 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   // translateX anchors
   const Tx_left  = -xCodeLeft;
-  const Tx_right = width / SCAN_ZOOM - xCodeRight;
+
+  // Per-line Tx_right: cut as soon as the RIGHT screen edge passes the last char.
+  // JetBrains Mono ≈ 0.6em per character.
+  const charWidth    = config.fontSize * 0.6;
+  const lineNumWidth = config.showLineNumbers
+    ? (String(totalLines).length + 1) * charWidth + 24
+    : 0;
+  const codeLines = config.code.split("\n");
+
+  const getTxRightForLine = (lineIdx: number): number => {
+    const lineText       = codeLines[lineIdx] ?? "";
+    const lineContentEnd = xCodeLeft + lineNumWidth + lineText.length * charWidth;
+    const tx             = width / SCAN_ZOOM - lineContentEnd;
+    // Clamp: never pan further left than Tx_left (short lines don't need panning)
+    return Math.min(tx, Tx_left);
+  };
 
   // Helper: absolute Y and scroll for a given line index
   const lineState = (idx: number) => {
@@ -203,26 +218,29 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
       const curr = lineState(lineIdx);
 
+      const Tx_right_line = getTxRightForLine(lineIdx);
+
       if (!isSnap) {
-        // ── Read phase: sweep left → right at reading speed ──────────
+        // ── Read phase: sweep left → right, stop when right edge hits last char ──
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
-        sceneTranslateX  = interpolate(frameInPhase, [0, readFrames], [Tx_left, Tx_right], clamp);
+        sceneTranslateX  = interpolate(frameInPhase, [0, readFrames], [Tx_left, Tx_right_line], clamp);
 
       } else {
         // ── Snap phase: fast diagonal jump to start of next line ─────
         const next = lineState(lineIdx + 1);
-        effectiveScrollY = interpolate(frameInPhase, [0, snapFrames], [curr.scroll, next.scroll], clamp);
-        sceneTranslateY  = interpolate(frameInPhase, [0, snapFrames], [curr.Ty,    next.Ty],    clamp);
-        sceneTranslateX  = interpolate(frameInPhase, [0, snapFrames], [Tx_right,   Tx_left],    clamp);
+        effectiveScrollY = interpolate(frameInPhase, [0, snapFrames], [curr.scroll,    next.scroll],    clamp);
+        sceneTranslateY  = interpolate(frameInPhase, [0, snapFrames], [curr.Ty,        next.Ty],        clamp);
+        sceneTranslateX  = interpolate(frameInPhase, [0, snapFrames], [Tx_right_line,  Tx_left],        clamp);
       }
 
     } else if (frame <= zoomOutEndFrame) {
       // Zoom-out from last scanned line back to full view
-      const last = lineState(scanLines - 1);
+      const last              = lineState(scanLines - 1);
+      const Tx_right_lastLine = getTxRightForLine(scanLines - 1);
       sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], clamp);
-      sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty,    0], clamp);
-      sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [Tx_right,   0], clamp);
+      sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty,          0], clamp);
+      sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [Tx_right_lastLine, 0], clamp);
       effectiveScrollY = 0;
 
     } else {
