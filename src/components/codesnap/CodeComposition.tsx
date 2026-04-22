@@ -105,18 +105,10 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const codeAreaTop    = cardTop + chromeH + config.padding; // abs-y of first code line
 
   // X: code content starts at padding*2 from scene left, spans to width−padding*2
-  const xCodeLeft  = config.padding * 2;          // ~112 px
-  const xCodeRight = width - config.padding * 2;  // ~968 px
-
+  const xCodeLeft   = config.padding * 2;
   const SCAN_ZOOM   = config.scanZoom;
   const ZOOM_FRAMES = Math.round(fps * 0.45);
-
-  // Two separate speeds:
-  //  readFrames  = frames to sweep one line left→right (from scanSpeed)
-  //  snapFrames  = frames for the fast jump end-of-line → start-of-next-line (fixed ~0.25 s)
-  const readFrames  = Math.max(Math.round(fps / config.scanSpeed), 6);
   const snapFrames  = Math.round(fps * 0.25); // always fast, independent of scanSpeed
-  const cycleFrames = readFrames + snapFrames; // one full line cycle (read + snap)
 
   const typingEndFrame = Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
@@ -125,99 +117,70 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
-  // How many lines fit: (n-1) full cycles + 1 read-only for the last line
-  const availableForPan = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
-  const scanLines = Math.min(
-    totalLines,
-    Math.max(1, Math.floor((availableForPan - readFrames) / cycleFrames) + 1)
-  );
-  const canScan = availableForPan >= readFrames;
-
-  // Total scan frames: (n-1) cycles + last read (no snap after last line)
-  const totalScanFrames = scanLines > 1
-    ? (scanLines - 1) * cycleFrames + readFrames
-    : readFrames;
-  const panEndFrame       = panStartFrame + totalScanFrames;
-  const zoomOutStartFrame = panEndFrame;
-  const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
-
   const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
 
-  // 1. Clean text for width calculation (prevents overshooting due to trailing spaces)
-  const codeLines = useMemo(() => 
-    config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()), 
-    [config.code]
-  );
+  // translateX anchor: origin is at the left edge of the code area
+  const Tx_left = -xCodeLeft;
 
+  // ── Per-line scan metrics ─────────────────────────────────────────────
+  // JetBrains Mono ≈ 0.6em per character
   const charWidth    = config.fontSize * 0.6;
   const lineNumWidth = config.showLineNumbers
     ? (String(totalLines).length + 1) * charWidth + 24
     : 0;
 
-  const SCAN_ZOOM   = config.scanZoom;
-  const ZOOM_FRAMES = Math.round(fps * 0.45);
-  const snapFrames  = Math.round(fps * 0.25); // Jump between lines
+  // Clean text for width calculation (trimEnd prevents overshooting into trailing spaces)
+  const codeLines = useMemo(() =>
+    config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()),
+    [config.code]
+  );
 
-  // 2. Pre-calculate metrics and target positions for each line
+  // Pre-calculate target Tx and geometry for every line
   const lineMetrics = useMemo(() => {
     const visibleWidth = width / SCAN_ZOOM;
-    
+
     return codeLines.map((lineText, idx) => {
       const lineContentEnd = xCodeLeft + lineNumWidth + lineText.length * charWidth;
-      
-      // We want the RIGHT edge of the zoomed viewport to align with lineContentEnd.
-      // width = (lineContentEnd + Tx) * SCAN_ZOOM  => Tx = (width/SCAN_ZOOM) - lineContentEnd
-      const idealTx = (width / SCAN_ZOOM) - lineContentEnd;
+
+      // We want the RIGHT edge of the zoomed viewport to land exactly on lineContentEnd:
+      //   screen_right = (lineContentEnd + Tx) * SCAN_ZOOM = width
+      //   → Tx = (width / SCAN_ZOOM) - lineContentEnd
+      // Clamp so we never over-scroll left of Tx_left.
+      const idealTx  = visibleWidth - lineContentEnd;
       const targetTx = Math.min(idealTx, Tx_left);
-      
       const scrollDist = Math.abs(Tx_left - targetTx);
-      
-      const scroll   = Math.max(0, idx - maxVisibleLines + 3) * lineHeight;
-      const absY     = codeAreaTop + idx * lineHeight - scroll;
-      const Ty       = height / 2 - absY;
+
+      const scroll = Math.max(0, idx - maxVisibleLines + 3) * lineHeight;
+      const absY   = codeAreaTop + idx * lineHeight - scroll;
+      const Ty     = height / 2 - absY;
 
       return { targetTx, scrollDist, Ty, scroll: -scroll };
     });
-  }, [codeLines, SCAN_ZOOM, width, config.fontSize, config.showLineNumbers, totalLines, xCodeLeft, lineNumWidth, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
+  }, [codeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
 
-  // 3. Distribute frames dynamically based on scroll distance (Constant Reading Speed)
-  const { lineSchedules, totalScanFrames } = useMemo(() => {
-    const BASE_READ_FRAMES = Math.round(fps * 0.3); // Minimum time to look at any line
-    const pixelsPerFrame   = Math.max(0.1, config.scanSpeed * (width / 1000)); 
-    
-    let currentFrame = 0;
+  // Distribute frames dynamically: speed is constant (pixels/frame), so longer lines get more time
+  const { lineSchedules, dynamicScanFrames } = useMemo(() => {
+    const BASE_READ_FRAMES = Math.round(fps * 0.3);
+    const pixelsPerFrame   = Math.max(0.1, config.scanSpeed * (width / 1000));
+
+    let cursor = 0;
     const schedules = lineMetrics.map((m, idx) => {
-      // Line is read for as long as it takes to scroll, plus a base rest time
       const readDuration = BASE_READ_FRAMES + Math.round(m.scrollDist / pixelsPerFrame);
-      const start = currentFrame;
-      const end = start + readDuration;
-      // No snap after the last line
+      const start   = cursor;
+      const end     = start + readDuration;
       const snapEnd = idx === lineMetrics.length - 1 ? end : end + snapFrames;
-      
-      currentFrame = snapEnd;
+      cursor = snapEnd;
       return { start, end, snapEnd };
     });
 
-    return { lineSchedules: schedules, totalScanFrames: currentFrame };
+    return { lineSchedules: schedules, dynamicScanFrames: cursor };
   }, [lineMetrics, config.scanSpeed, fps, snapFrames, width]);
 
-  const typingEndFrame = Math.round(
-    (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
-  );
-  const scanStartFrame = typingEndFrame + Math.round(fps * 0.35);
-  const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
-  const panStartFrame  = zoomInEndFrame;
-
-  const panEndFrame       = panStartFrame + totalScanFrames;
+  const availableForPan   = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
+  const canScan           = availableForPan >= dynamicScanFrames;
+  const panEndFrame       = panStartFrame + dynamicScanFrames;
   const zoomOutStartFrame = panEndFrame;
   const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
-
-  const availableForPan = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
-  const canScan = availableForPan >= totalScanFrames;
-
-
-  // translateX anchors
-  const Tx_left  = -xCodeLeft;
 
   let sceneZoom        = 1;
   let sceneTranslateX  = 0;
