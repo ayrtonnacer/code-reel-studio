@@ -143,32 +143,82 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
 
-  // translateX anchors
-  const Tx_left  = -xCodeLeft;
+  // 1. Clean text for width calculation (prevents overshooting due to trailing spaces)
+  const codeLines = useMemo(() => 
+    config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()), 
+    [config.code]
+  );
 
-  // Per-line Tx_right: cut as soon as the RIGHT screen edge passes the last char.
-  // JetBrains Mono ≈ 0.6em per character.
   const charWidth    = config.fontSize * 0.6;
   const lineNumWidth = config.showLineNumbers
     ? (String(totalLines).length + 1) * charWidth + 24
     : 0;
-  const codeLines = config.code.split("\n");
 
-  const getTxRightForLine = (lineIdx: number): number => {
-    const lineText       = codeLines[lineIdx] ?? "";
-    const lineContentEnd = xCodeLeft + lineNumWidth + lineText.length * charWidth;
-    const tx             = width / SCAN_ZOOM - lineContentEnd;
-    // Clamp: never pan further left than Tx_left (short lines don't need panning)
-    return Math.min(tx, Tx_left);
-  };
+  const SCAN_ZOOM   = config.scanZoom;
+  const ZOOM_FRAMES = Math.round(fps * 0.45);
+  const snapFrames  = Math.round(fps * 0.25); // Jump between lines
 
-  // Helper: absolute Y and scroll for a given line index
-  const lineState = (idx: number) => {
-    const scroll   = Math.max(0, idx - maxVisibleLines + 3) * lineHeight;
-    const absY     = codeAreaTop + idx * lineHeight - scroll;
-    const Ty       = height / 2 - absY;
-    return { scroll: -scroll, Ty };
-  };
+  // 2. Pre-calculate metrics and target positions for each line
+  const lineMetrics = useMemo(() => {
+    const visibleWidth = width / SCAN_ZOOM;
+    
+    return codeLines.map((lineText, idx) => {
+      const lineContentEnd = xCodeLeft + lineNumWidth + lineText.length * charWidth;
+      
+      // We want the RIGHT edge of the zoomed viewport to align with lineContentEnd.
+      // width = (lineContentEnd + Tx) * SCAN_ZOOM  => Tx = (width/SCAN_ZOOM) - lineContentEnd
+      const idealTx = (width / SCAN_ZOOM) - lineContentEnd;
+      const targetTx = Math.min(idealTx, Tx_left);
+      
+      const scrollDist = Math.abs(Tx_left - targetTx);
+      
+      const scroll   = Math.max(0, idx - maxVisibleLines + 3) * lineHeight;
+      const absY     = codeAreaTop + idx * lineHeight - scroll;
+      const Ty       = height / 2 - absY;
+
+      return { targetTx, scrollDist, Ty, scroll: -scroll };
+    });
+  }, [codeLines, SCAN_ZOOM, width, config.fontSize, config.showLineNumbers, totalLines, xCodeLeft, lineNumWidth, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
+
+  // 3. Distribute frames dynamically based on scroll distance (Constant Reading Speed)
+  const { lineSchedules, totalScanFrames } = useMemo(() => {
+    const BASE_READ_FRAMES = Math.round(fps * 0.3); // Minimum time to look at any line
+    const pixelsPerFrame   = Math.max(0.1, config.scanSpeed * (width / 1000)); 
+    
+    let currentFrame = 0;
+    const schedules = lineMetrics.map((m, idx) => {
+      // Line is read for as long as it takes to scroll, plus a base rest time
+      const readDuration = BASE_READ_FRAMES + Math.round(m.scrollDist / pixelsPerFrame);
+      const start = currentFrame;
+      const end = start + readDuration;
+      // No snap after the last line
+      const snapEnd = idx === lineMetrics.length - 1 ? end : end + snapFrames;
+      
+      currentFrame = snapEnd;
+      return { start, end, snapEnd };
+    });
+
+    return { lineSchedules: schedules, totalScanFrames: currentFrame };
+  }, [lineMetrics, config.scanSpeed, fps, snapFrames, width]);
+
+  const typingEndFrame = Math.round(
+    (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
+  );
+  const scanStartFrame = typingEndFrame + Math.round(fps * 0.35);
+  const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
+  const panStartFrame  = zoomInEndFrame;
+
+  const panEndFrame       = panStartFrame + totalScanFrames;
+  const zoomOutStartFrame = panEndFrame;
+  const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
+
+  const availableForPan = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
+  const canScan = availableForPan >= totalScanFrames;
+
+  const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
+
+  // translateX anchors
+  const Tx_left  = -xCodeLeft;
 
   let sceneZoom        = 1;
   let sceneTranslateX  = 0;
@@ -181,9 +231,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
     } else if (frame <= zoomInEndFrame) {
       // Zoom-in to top-left of first code line
-      const { Ty: Ty0 } = lineState(0);
+      const m0 = lineMetrics[0];
       sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], clamp);
-      sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Ty0], clamp);
+      sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], clamp);
       sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], clamp);
       effectiveScrollY = 0;
 
@@ -191,56 +241,34 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       sceneZoom = SCAN_ZOOM;
       const scanFrame = frame - panStartFrame;
 
-      // Determine current line index and phase
-      // Each cycle = readFrames (sweep) + snapFrames (jump), except last line = read only
-      let lineIdx: number;
-      let isSnap: boolean;
-      let frameInPhase: number;
+      // Find which line we are currently scanning
+      const lineIdx = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
+      const currentIdx = lineIdx === -1 ? lineSchedules.length - 1 : lineIdx;
+      
+      const sched = lineSchedules[currentIdx];
+      const curr  = lineMetrics[currentIdx];
+      const inLineFrame = scanFrame - sched.start;
 
-      if (scanLines === 1) {
-        lineIdx      = 0;
-        isSnap       = false;
-        frameInPhase = Math.min(scanFrame, readFrames - 1);
-      } else {
-        const rawCycle   = Math.floor(scanFrame / cycleFrames);
-        lineIdx          = Math.min(rawCycle, scanLines - 1);
-        const inCycle    = scanFrame - rawCycle * cycleFrames;
-
-        if (rawCycle >= scanLines - 1) {
-          // Last line — read only, no snap
-          isSnap       = false;
-          frameInPhase = Math.min(scanFrame - (scanLines - 1) * cycleFrames, readFrames - 1);
-        } else {
-          isSnap       = inCycle >= readFrames;
-          frameInPhase = isSnap ? inCycle - readFrames : inCycle;
-        }
-      }
-
-      const curr = lineState(lineIdx);
-
-      const Tx_right_line = getTxRightForLine(lineIdx);
-
-      if (!isSnap) {
+      if (scanFrame < sched.end) {
         // ── Read phase: sweep left → right, stop when right edge hits last char ──
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
-        sceneTranslateX  = interpolate(frameInPhase, [0, readFrames], [Tx_left, Tx_right_line], clamp);
-
+        sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], clamp);
       } else {
         // ── Snap phase: fast diagonal jump to start of next line ─────
-        const next = lineState(lineIdx + 1);
-        effectiveScrollY = interpolate(frameInPhase, [0, snapFrames], [curr.scroll,    next.scroll],    clamp);
-        sceneTranslateY  = interpolate(frameInPhase, [0, snapFrames], [curr.Ty,        next.Ty],        clamp);
-        sceneTranslateX  = interpolate(frameInPhase, [0, snapFrames], [Tx_right_line,  Tx_left],        clamp);
+        const next = lineMetrics[currentIdx + 1] || curr;
+        const snapFrame = scanFrame - sched.end;
+        effectiveScrollY = interpolate(snapFrame, [0, snapFrames], [curr.scroll, next.scroll], clamp);
+        sceneTranslateY  = interpolate(snapFrame, [0, snapFrames], [curr.Ty,     next.Ty],     clamp);
+        sceneTranslateX  = interpolate(snapFrame, [0, snapFrames], [curr.targetTx, Tx_left],    clamp);
       }
 
     } else if (frame <= zoomOutEndFrame) {
       // Zoom-out from last scanned line back to full view
-      const last              = lineState(scanLines - 1);
-      const Tx_right_lastLine = getTxRightForLine(scanLines - 1);
+      const lastLine = lineMetrics[lineMetrics.length - 1];
       sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], clamp);
-      sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty,          0], clamp);
-      sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [Tx_right_lastLine, 0], clamp);
+      sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.Ty, 0], clamp);
+      sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.targetTx, 0], clamp);
       effectiveScrollY = 0;
 
     } else {
@@ -250,6 +278,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       effectiveScrollY = 0;
     }
   }
+
   // ─────────────────────────────────────────────────────────────────────
 
   // Title fades out at 1.5 s
