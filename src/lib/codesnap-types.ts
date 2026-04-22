@@ -125,7 +125,33 @@ export const VIDEO_HEIGHT = 1920;
 export function computeDurationFrames(cfg: SnippetConfig): number {
   const chars = cfg.code.length;
   const typingSeconds = chars / Math.max(1, cfg.typingSpeed);
-  const total = cfg.startDelay + typingSeconds + cfg.holdEnd;
+
+  // Scan-read effect duration (must mirror the logic in CodeComposition)
+  const lines         = cfg.code.split("\n");
+  const ZOOM_SEC      = 0.45;  // zoom-in / zoom-out each
+  const SNAP_SEC      = 0.25;  // snap between lines
+  const BASE_READ_SEC = 0.3;   // minimum read time per line
+  const charWidth     = cfg.fontSize * 0.6;
+  const pixelsPerFrame = Math.max(0.1, cfg.scanSpeed * (VIDEO_WIDTH / 1000));
+  const pixelsPerSec   = pixelsPerFrame * FPS;
+  const visibleWidth   = VIDEO_WIDTH / Math.max(1, cfg.scanZoom);
+  const xCodeLeft      = cfg.padding * 2;
+  const lineNumWidth   = cfg.showLineNumbers
+    ? (String(lines.length).length + 1) * charWidth + 24
+    : 0;
+
+  let scanSec = ZOOM_SEC + ZOOM_SEC; // zoom-in + zoom-out
+  lines.forEach((line, idx) => {
+    const lineContentEnd = xCodeLeft + lineNumWidth + line.trimEnd().length * charWidth;
+    const idealTx  = visibleWidth - lineContentEnd;
+    const targetTx = Math.min(idealTx, -xCodeLeft);
+    const scrollDist = Math.abs(-xCodeLeft - targetTx);
+    const readSec = BASE_READ_SEC + scrollDist / pixelsPerSec;
+    scanSec += readSec;
+    if (idx < lines.length - 1) scanSec += SNAP_SEC;
+  });
+
+  const total = cfg.startDelay + typingSeconds + 0.35 /* pause */ + scanSec + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
 }
 
