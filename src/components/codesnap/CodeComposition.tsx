@@ -215,7 +215,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const availableForPan = durationInFrames - panStartFrame - ZOOM_FRAMES - Math.round(fps * 0.3);
   const canScan = availableForPan >= totalScanFrames;
 
-  const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
 
   // translateX anchors
   const Tx_left  = -xCodeLeft;
