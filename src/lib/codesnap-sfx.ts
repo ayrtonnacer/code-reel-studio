@@ -1,7 +1,6 @@
 // Sound effect synthesis — all audio generated in-browser, no external files needed.
 
-const SR     = 22050; // default for music
-const SR_SFX = 44100; // high-quality for SFX (better click transients)
+const SR = 22050; // sample rate for generated music
 
 function buildWAV(samples: Float32Array, sr = SR): string {
   const n = samples.length;
@@ -25,61 +24,14 @@ function buildWAV(samples: Float32Array, sr = SR): string {
 // ─── Sound Effects ────────────────────────────────────────────────────────────
 
 // Real keyboard typing sound — served from public/sounds/
-export const SFX_TYPE_CLICK = '/sounds/typing-keyboard.mp3';
+export const SFX_TYPE_CLICK    = '/sounds/typing-keyboard.mp3';
 
-// Camera-focus click for zoom-in: sharp snap + brief 900→1400 Hz tonal tail (80 ms)
-export const SFX_ZOOM_IN: string = (() => {
-  const sr = SR_SFX;
-  const n  = Math.floor(sr * 0.08); // 80 ms
-  const s  = new Float32Array(n);
+// Mouse click for zoom-in and zoom-out (same sound)
+export const SFX_ZOOM_IN       = '/sounds/zoom-click.mp3';
+export const SFX_ZOOM_OUT      = '/sounds/zoom-click.mp3';
 
-  // Click body (0–6 ms)
-  const cE = Math.floor(sr * 0.006);
-  for (let i = 0; i < cE; i++) {
-    const t = i / sr;
-    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 800) * 0.55;
-    s[i] += Math.sin(2 * Math.PI * 2800 * t) * Math.exp(-t * 700) * 0.5;
-  }
-
-  // Tonal tail (4–70 ms): quick rising tone = "locking in"
-  const tS = Math.floor(sr * 0.004), tE = Math.floor(sr * 0.070);
-  const dur = (tE - tS) / sr;
-  for (let i = tS; i < tE; i++) {
-    const t = (i - tS) / sr;
-    const phase = 900 * t + (1400 - 900) * t * t / (2 * dur);
-    s[i] += Math.sin(2 * Math.PI * phase) * Math.exp(-t * 55) * 0.38;
-  }
-
-  for (let i = 0; i < n; i++) s[i] = Math.tanh(s[i] * 2) * 0.78;
-  return buildWAV(s, sr);
-})();
-
-// Camera-focus click for zoom-out: same snap + brief 1400→700 Hz falling tail (80 ms)
-export const SFX_ZOOM_OUT: string = (() => {
-  const sr = SR_SFX;
-  const n  = Math.floor(sr * 0.08); // 80 ms
-  const s  = new Float32Array(n);
-
-  // Click body (0–6 ms)
-  const cE = Math.floor(sr * 0.006);
-  for (let i = 0; i < cE; i++) {
-    const t = i / sr;
-    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 800) * 0.55;
-    s[i] += Math.sin(2 * Math.PI * 2000 * t) * Math.exp(-t * 700) * 0.5;
-  }
-
-  // Tonal tail (4–70 ms): quick falling tone = "releasing"
-  const tS = Math.floor(sr * 0.004), tE = Math.floor(sr * 0.070);
-  const dur = (tE - tS) / sr;
-  for (let i = tS; i < tE; i++) {
-    const t = (i - tS) / sr;
-    const phase = 1400 * t + (700 - 1400) * t * t / (2 * dur);
-    s[i] += Math.sin(2 * Math.PI * phase) * Math.exp(-t * 60) * 0.35;
-  }
-
-  for (let i = 0; i < n; i++) s[i] = Math.tanh(s[i] * 2) * 0.78;
-  return buildWAV(s, sr);
-})();
+// Whoosh played at the very start of the video
+export const SFX_INTRO_WHOOSH  = '/sounds/intro-whoosh.mp3';
 
 // ─── Music Presets ────────────────────────────────────────────────────────────
 

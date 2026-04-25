@@ -8,7 +8,7 @@ import {
   VIDEO_WIDTH,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
-import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, type MusicPresetKey } from "@/lib/codesnap-sfx";
+import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_INTRO_WHOOSH, type MusicPresetKey } from "@/lib/codesnap-sfx";
 
 export type ExportFormat = "webm" | "mp4";
 
@@ -200,24 +200,27 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
   if (config.sfxEnabled) {
     const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec } = computeVideoTimings(config);
 
+    // Intro whoosh at t=0
+    sources.push({ dataUrl: SFX_INTRO_WHOOSH, volume: 0.75, fadeOut: 0, startTime: 0 });
+
     // Typing click loop
     sources.push({
       dataUrl: SFX_TYPE_CLICK,
-      volume: 0.45,
+      volume: 0.55,
       fadeOut: 0,
       startTime: typingStartSec,
       endTime: typingEndSec,
       loop: true,
     });
 
-    // Zoom-in swoosh
+    // Zoom-in click
     if (isFinite(zoomInStartSec)) {
-      sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.65, fadeOut: 0, startTime: zoomInStartSec });
+      sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.75, fadeOut: 0, startTime: zoomInStartSec });
     }
 
-    // Zoom-out swoosh
+    // Zoom-out click
     if (isFinite(zoomOutStartSec)) {
-      sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.65, fadeOut: 0, startTime: zoomOutStartSec });
+      sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.75, fadeOut: 0, startTime: zoomOutStartSec });
     }
   }
 
