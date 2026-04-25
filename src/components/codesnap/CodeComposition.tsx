@@ -113,7 +113,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const typingEndFrame = Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
   );
-  const scanStartFrame = typingEndFrame + Math.round(fps * 0.35);
+  const scanStartFrame = config.scanEnabled
+    ? typingEndFrame + Math.round(fps * 0.35)
+    : Infinity;
   const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
@@ -239,22 +241,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     effectiveScrollY = 0;
   }
 
-  // ─── Scan highlight: token under the read cursor (right edge of viewport) ─
+  // ─── Scan highlight: current line being read ─────────────────────────
   let highlightLineIdx = -1;
-  let highlightCharPos = -1;
 
   if (frame >= panStartFrame && frame < panEndFrame) {
     const scanF = frame - panStartFrame;
     const li = lineSchedules.findIndex(s => scanF < s.snapEnd);
     const ci = li === -1 ? lineSchedules.length - 1 : li;
-    const sched = lineSchedules[ci];
-    if (scanF < sched.end) {
-      const inLine = scanF - sched.start;
-      const m = lineMetrics[ci];
-      const curTx = interpolate(inLine, [0, sched.end - sched.start], [Tx_left, m.targetTx], clamp);
-      const rightEdge = width / SCAN_ZOOM - curTx;
+    if (scanF < lineSchedules[ci].end) {
       highlightLineIdx = ci;
-      highlightCharPos = Math.max(0, Math.floor((rightEdge - xCodeLeft - lineNumWidth) / charWidth));
     }
   }
 
@@ -398,53 +393,48 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               color: theme.text,
               whiteSpace: "pre",
             }}>
-              {renderedLines.map((lineTokens, lineIdx) => {
-                let charCursor = 0;
-                return (
-                  <div key={lineIdx} style={{ display: "flex", minHeight: lineHeight }}>
-                    {config.showLineNumbers && (
-                      <span style={{
-                        color: "rgba(255, 255, 255, 0.2)",
-                        width: `${String(totalLines).length + 1}ch`,
-                        textAlign: "right",
-                        paddingRight: 24,
-                        userSelect: "none",
-                        flexShrink: 0,
-                      }}>
-                        {lineIdx + 1}
-                      </span>
-                    )}
-                    <span style={{ flex: 1 }}>
-                      {lineTokens.map((t, ti) => {
-                        const tStart = charCursor;
-                        charCursor += t.text.length;
-                        const isHl = lineIdx === highlightLineIdx &&
-                          highlightCharPos >= tStart &&
-                          highlightCharPos < charCursor;
-                        return (
-                          <span key={ti} style={{
-                            color: isHl ? "#ffffff" : colorFor(t.type),
-                            textShadow: isHl ? `0 0 18px ${colorFor(t.type)}, 0 0 8px ${colorFor(t.type)}` : undefined,
-                          }}>
-                            {t.text}
-                          </span>
-                        );
-                      })}
-                      {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
-                        <span style={{
-                          display: "inline-block",
-                          width: 2,
-                          height: config.fontSize * 1.1,
-                          background: theme.cursor,
-                          verticalAlign: "middle",
-                          marginLeft: 1,
-                          opacity: cursorVisible ? 1 : 0,
-                        }} />
-                      )}
+              {renderedLines.map((lineTokens, lineIdx) => (
+                <div key={lineIdx} style={{
+                  display: "flex",
+                  minHeight: lineHeight,
+                  background: lineIdx === highlightLineIdx ? "rgba(255,255,255,0.09)" : "transparent",
+                  borderRadius: 2,
+                }}>
+                  {config.showLineNumbers && (
+                    <span style={{
+                      color: "rgba(255, 255, 255, 0.2)",
+                      width: `${String(totalLines).length + 1}ch`,
+                      textAlign: "right",
+                      paddingRight: 24,
+                      userSelect: "none",
+                      flexShrink: 0,
+                    }}>
+                      {lineIdx + 1}
                     </span>
-                  </div>
-                );
-              })}
+                  )}
+                  <span style={{
+                    flex: 1,
+                    filter: lineIdx === highlightLineIdx ? "brightness(1.4)" : undefined,
+                  }}>
+                    {lineTokens.map((t, ti) => (
+                      <span key={ti} style={{ color: colorFor(t.type) }}>
+                        {t.text}
+                      </span>
+                    ))}
+                    {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
+                      <span style={{
+                        display: "inline-block",
+                        width: 2,
+                        height: config.fontSize * 1.1,
+                        background: theme.cursor,
+                        verticalAlign: "middle",
+                        marginLeft: 1,
+                        opacity: cursorVisible ? 1 : 0,
+                      }} />
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

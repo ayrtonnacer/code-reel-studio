@@ -70,6 +70,7 @@ export interface SnippetConfig {
   showTitle: boolean;
   brandHandle: string;
   // scan effect
+  scanEnabled: boolean;
   scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
   // audio
@@ -110,6 +111,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   title: "Quicksort in 7 lines",
   showTitle: true,
   brandHandle: "@ayrtonnacer",
+  scanEnabled: true,
   scanSpeed: 0.20,
   scanZoom: 12,
   audioDataUrl: null,
@@ -151,7 +153,7 @@ export function computeDurationFrames(cfg: SnippetConfig): number {
     if (idx < lines.length - 1) scanSec += SNAP_SEC;
   });
 
-  const total = cfg.startDelay + typingSeconds + 0.35 /* pause */ + scanSec + cfg.holdEnd;
+  const total = cfg.startDelay + typingSeconds + (cfg.scanEnabled ? 0.35 /* pause */ + scanSec : 0) + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
 }
 

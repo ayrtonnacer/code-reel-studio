@@ -354,25 +354,35 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           />
         </Field>
 
-        <Field label={`Scan speed · ${config.scanSpeed.toFixed(2)} lines/s`}>
-          <Slider
-            value={[config.scanSpeed]}
-            min={0.05}
-            max={3}
-            step={0.05}
-            onValueChange={([v]) => onChange({ scanSpeed: v })}
-          />
-        </Field>
+        <ToggleRow
+          label="Zoom & pan effect"
+          checked={config.scanEnabled}
+          onChange={(v) => onChange({ scanEnabled: v })}
+        />
 
-        <Field label={`Scan zoom · ${config.scanZoom.toFixed(1)}×`}>
-          <Slider
-            value={[config.scanZoom]}
-            min={2}
-            max={15}
-            step={0.5}
-            onValueChange={([v]) => onChange({ scanZoom: v })}
-          />
-        </Field>
+        {config.scanEnabled && (
+          <>
+            <Field label={`Scan speed · ${config.scanSpeed.toFixed(2)} lines/s`}>
+              <Slider
+                value={[config.scanSpeed]}
+                min={0.05}
+                max={3}
+                step={0.05}
+                onValueChange={([v]) => onChange({ scanSpeed: v })}
+              />
+            </Field>
+
+            <Field label={`Scan zoom · ${config.scanZoom.toFixed(1)}×`}>
+              <Slider
+                value={[config.scanZoom]}
+                min={2}
+                max={15}
+                step={0.5}
+                onValueChange={([v]) => onChange({ scanZoom: v })}
+              />
+            </Field>
+          </>
+        )}
 
         <ToggleRow
           label="Show cursor"
