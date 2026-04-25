@@ -24,47 +24,8 @@ function buildWAV(samples: Float32Array, sr = SR): string {
 
 // ─── Sound Effects ────────────────────────────────────────────────────────────
 
-// Realistic mechanical keyboard key (spacebar-style: hollow thump + click)
-// 130 ms total → ~7.7 loops/sec. Layers: spring click + keycap body + plate impact.
-export const SFX_TYPE_CLICK: string = (() => {
-  const sr = SR_SFX;
-  const n  = Math.floor(sr * 0.13); // 130 ms
-  const s  = new Float32Array(n);
-
-  // Spring/mechanism click (0–5 ms): white noise burst + 3.5 kHz ring
-  const mEnd = Math.floor(sr * 0.005);
-  for (let i = 0; i < mEnd; i++) {
-    const t = i / sr;
-    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 700) * 0.65;
-    s[i] += Math.sin(2 * Math.PI * 3400 * t) * Math.exp(-t * 900) * 0.5;
-  }
-
-  // Keycap body resonance (2–55 ms): ~680 Hz hollow tone (spacebar character)
-  const bS = Math.floor(sr * 0.002), bE = Math.floor(sr * 0.055);
-  for (let i = bS; i < bE; i++) {
-    const t = (i - bS) / sr;
-    s[i] += Math.sin(2 * Math.PI * 680  * t) * Math.exp(-t * 70) * 0.38;
-    s[i] += Math.sin(2 * Math.PI * 1320 * t) * Math.exp(-t * 130) * 0.14;
-  }
-
-  // Plate / PCB impact thump (5–80 ms): low 140 Hz — the "weight" of the key
-  const pS = Math.floor(sr * 0.005), pE = Math.floor(sr * 0.080);
-  for (let i = pS; i < pE; i++) {
-    const t = (i - pS) / sr;
-    s[i] += Math.sin(2 * Math.PI * 140 * t) * Math.exp(-t * 45) * 0.42;
-    s[i] += Math.sin(2 * Math.PI * 270 * t) * Math.exp(-t * 90) * 0.15;
-  }
-
-  // Room tail (20–110 ms): subtle noise decay
-  const rS = Math.floor(sr * 0.020), rE = Math.floor(sr * 0.110);
-  for (let i = rS; i < rE; i++) {
-    const t = (i - rS) / sr;
-    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 70) * 0.028;
-  }
-
-  for (let i = 0; i < n; i++) s[i] = Math.tanh(s[i] * 1.9) * 0.75;
-  return buildWAV(s, sr);
-})();
+// Real keyboard typing sound — served from public/sounds/
+export const SFX_TYPE_CLICK = '/sounds/typing-keyboard.mp3';
 
 // Camera-focus click for zoom-in: sharp snap + brief 900→1400 Hz tonal tail (80 ms)
 export const SFX_ZOOM_IN: string = (() => {
