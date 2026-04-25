@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Audio } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, Audio } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
 import { buildBackgroundCss } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
@@ -117,7 +117,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
-  const clamp = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
+  const clamp     = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
+  const easeOut   = { ...clamp, easing: Easing.out(Easing.cubic) };
+  const easeInOut = { ...clamp, easing: Easing.inOut(Easing.cubic) };
 
   // translateX anchor: origin is at the left edge of the code area
   const Tx_left = -xCodeLeft;
@@ -191,9 +193,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   } else if (frame <= zoomInEndFrame) {
     // Zoom-in to top-left of first code line
     const m0 = lineMetrics[0];
-    sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], clamp);
-    sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], clamp);
-    sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], clamp);
+    sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], easeOut);
+    sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], easeOut);
+    sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], easeOut);
     effectiveScrollY = 0;
 
   } else if (frame < panEndFrame) {
@@ -225,9 +227,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   } else if (frame <= zoomOutEndFrame) {
     // Zoom-out from last scanned line back to full view
     const lastLine = lineMetrics[lineMetrics.length - 1];
-    sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], clamp);
-    sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.Ty, 0], clamp);
-    sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.targetTx, 0], clamp);
+    sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], easeInOut);
+    sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.Ty, 0], easeInOut);
+    sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.targetTx, 0], easeInOut);
     effectiveScrollY = 0;
 
   } else {
@@ -237,7 +239,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     effectiveScrollY = 0;
   }
 
-  // ─────────────────────────────────────────────────────────────────────
+  // ─── Scan highlight: token under the read cursor (right edge of viewport) ─
+  let highlightLineIdx = -1;
+  let highlightCharPos = -1;
+
+  if (frame >= panStartFrame && frame < panEndFrame) {
+    const scanF = frame - panStartFrame;
+    const li = lineSchedules.findIndex(s => scanF < s.snapEnd);
+    const ci = li === -1 ? lineSchedules.length - 1 : li;
+    const sched = lineSchedules[ci];
+    if (scanF < sched.end) {
+      const inLine = scanF - sched.start;
+      const m = lineMetrics[ci];
+      const curTx = interpolate(inLine, [0, sched.end - sched.start], [Tx_left, m.targetTx], clamp);
+      const rightEdge = width / SCAN_ZOOM - curTx;
+      highlightLineIdx = ci;
+      highlightCharPos = Math.max(0, Math.floor((rightEdge - xCodeLeft - lineNumWidth) / charWidth));
+    }
+  }
 
   // Title fades out at 1.5 s
   const titleOpacity =
@@ -379,40 +398,53 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               color: theme.text,
               whiteSpace: "pre",
             }}>
-              {renderedLines.map((lineTokens, lineIdx) => (
-                <div key={lineIdx} style={{ display: "flex", minHeight: lineHeight }}>
-                  {config.showLineNumbers && (
-                    <span style={{
-                      color: "rgba(255, 255, 255, 0.2)",
-                      width: `${String(totalLines).length + 1}ch`,
-                      textAlign: "right",
-                      paddingRight: 24,
-                      userSelect: "none",
-                      flexShrink: 0,
-                    }}>
-                      {lineIdx + 1}
-                    </span>
-                  )}
-                  <span style={{ flex: 1 }}>
-                    {lineTokens.map((t, ti) => (
-                      <span key={ti} style={{ color: colorFor(t.type) }}>
-                        {t.text}
-                      </span>
-                    ))}
-                    {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
+              {renderedLines.map((lineTokens, lineIdx) => {
+                let charCursor = 0;
+                return (
+                  <div key={lineIdx} style={{ display: "flex", minHeight: lineHeight }}>
+                    {config.showLineNumbers && (
                       <span style={{
-                        display: "inline-block",
-                        width: 2,
-                        height: config.fontSize * 1.1,
-                        background: theme.cursor,
-                        verticalAlign: "middle",
-                        marginLeft: 1,
-                        opacity: cursorVisible ? 1 : 0,
-                      }} />
+                        color: "rgba(255, 255, 255, 0.2)",
+                        width: `${String(totalLines).length + 1}ch`,
+                        textAlign: "right",
+                        paddingRight: 24,
+                        userSelect: "none",
+                        flexShrink: 0,
+                      }}>
+                        {lineIdx + 1}
+                      </span>
                     )}
-                  </span>
-                </div>
-              ))}
+                    <span style={{ flex: 1 }}>
+                      {lineTokens.map((t, ti) => {
+                        const tStart = charCursor;
+                        charCursor += t.text.length;
+                        const isHl = lineIdx === highlightLineIdx &&
+                          highlightCharPos >= tStart &&
+                          highlightCharPos < charCursor;
+                        return (
+                          <span key={ti} style={{
+                            color: isHl ? "#ffffff" : colorFor(t.type),
+                            textShadow: isHl ? `0 0 18px ${colorFor(t.type)}, 0 0 8px ${colorFor(t.type)}` : undefined,
+                          }}>
+                            {t.text}
+                          </span>
+                        );
+                      })}
+                      {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
+                        <span style={{
+                          display: "inline-block",
+                          width: 2,
+                          height: config.fontSize * 1.1,
+                          background: theme.cursor,
+                          verticalAlign: "middle",
+                          marginLeft: 1,
+                          opacity: cursorVisible ? 1 : 0,
+                        }} />
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
