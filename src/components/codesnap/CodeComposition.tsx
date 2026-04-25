@@ -264,7 +264,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   // SFX frame windows
   const startTypingFrame  = Math.round(config.startDelay * fps);
-  const sfxSweepDurFrames = Math.round(0.32 * fps); // matches SFX_ZOOM_IN/OUT length
+  const sfxSweepDurFrames = Math.round(0.08 * fps) + 2; // matches SFX_ZOOM_IN/OUT length (80ms + safety margin)
 
   // Background music preset data URL (cached after first call)
   const bgMusicUrl = useMemo(

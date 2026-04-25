@@ -1,8 +1,9 @@
 // Sound effect synthesis — all audio generated in-browser, no external files needed.
 
-const SR = 22050; // sample rate for all generated audio
+const SR     = 22050; // default for music
+const SR_SFX = 44100; // high-quality for SFX (better click transients)
 
-function buildWAV(samples: Float32Array): string {
+function buildWAV(samples: Float32Array, sr = SR): string {
   const n = samples.length;
   const buf = new ArrayBuffer(44 + n * 2);
   const dv = new DataView(buf);
@@ -10,7 +11,7 @@ function buildWAV(samples: Float32Array): string {
   ws(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true);
   ws(8, 'WAVE'); ws(12, 'fmt '); dv.setUint32(16, 16, true);
   dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-  dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true);
   dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
   ws(36, 'data'); dv.setUint32(40, n * 2, true);
   for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, Math.round(samples[i] * 30000))), true);
@@ -23,45 +24,100 @@ function buildWAV(samples: Float32Array): string {
 
 // ─── Sound Effects ────────────────────────────────────────────────────────────
 
-// Short mechanical keyboard click (80ms with tail silence → loops at ~12 clicks/s)
+// Realistic mechanical keyboard key (spacebar-style: hollow thump + click)
+// 130 ms total → ~7.7 loops/sec. Layers: spring click + keycap body + plate impact.
 export const SFX_TYPE_CLICK: string = (() => {
-  const n = Math.floor(SR * 0.08);
-  const clickN = Math.floor(SR * 0.025);
-  const s = new Float32Array(n);
-  for (let i = 0; i < clickN; i++) {
-    const t = i / SR;
-    s[i] = (Math.random() * 2 - 1) * Math.exp(-t * 280) * 0.25
-          + Math.sin(2 * Math.PI * 3600 * t) * Math.exp(-t * 200) * 0.42;
+  const sr = SR_SFX;
+  const n  = Math.floor(sr * 0.13); // 130 ms
+  const s  = new Float32Array(n);
+
+  // Spring/mechanism click (0–5 ms): white noise burst + 3.5 kHz ring
+  const mEnd = Math.floor(sr * 0.005);
+  for (let i = 0; i < mEnd; i++) {
+    const t = i / sr;
+    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 700) * 0.65;
+    s[i] += Math.sin(2 * Math.PI * 3400 * t) * Math.exp(-t * 900) * 0.5;
   }
-  return buildWAV(s);
+
+  // Keycap body resonance (2–55 ms): ~680 Hz hollow tone (spacebar character)
+  const bS = Math.floor(sr * 0.002), bE = Math.floor(sr * 0.055);
+  for (let i = bS; i < bE; i++) {
+    const t = (i - bS) / sr;
+    s[i] += Math.sin(2 * Math.PI * 680  * t) * Math.exp(-t * 70) * 0.38;
+    s[i] += Math.sin(2 * Math.PI * 1320 * t) * Math.exp(-t * 130) * 0.14;
+  }
+
+  // Plate / PCB impact thump (5–80 ms): low 140 Hz — the "weight" of the key
+  const pS = Math.floor(sr * 0.005), pE = Math.floor(sr * 0.080);
+  for (let i = pS; i < pE; i++) {
+    const t = (i - pS) / sr;
+    s[i] += Math.sin(2 * Math.PI * 140 * t) * Math.exp(-t * 45) * 0.42;
+    s[i] += Math.sin(2 * Math.PI * 270 * t) * Math.exp(-t * 90) * 0.15;
+  }
+
+  // Room tail (20–110 ms): subtle noise decay
+  const rS = Math.floor(sr * 0.020), rE = Math.floor(sr * 0.110);
+  for (let i = rS; i < rE; i++) {
+    const t = (i - rS) / sr;
+    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 70) * 0.028;
+  }
+
+  for (let i = 0; i < n; i++) s[i] = Math.tanh(s[i] * 1.9) * 0.75;
+  return buildWAV(s, sr);
 })();
 
-// Rising frequency sweep for zoom-in (320ms)
+// Camera-focus click for zoom-in: sharp snap + brief 900→1400 Hz tonal tail (80 ms)
 export const SFX_ZOOM_IN: string = (() => {
-  const dur = 0.32;
-  const n = Math.floor(SR * dur);
-  const s = new Float32Array(n);
-  const f0 = 120, f1 = 2400;
-  for (let i = 0; i < n; i++) {
-    const t = i / SR;
-    const phase = f0 * t + (f1 - f0) * t * t / (2 * dur);
-    s[i] = Math.sin(2 * Math.PI * phase) * Math.min(1, t * 18) * Math.exp(-t * 5) * 0.55;
+  const sr = SR_SFX;
+  const n  = Math.floor(sr * 0.08); // 80 ms
+  const s  = new Float32Array(n);
+
+  // Click body (0–6 ms)
+  const cE = Math.floor(sr * 0.006);
+  for (let i = 0; i < cE; i++) {
+    const t = i / sr;
+    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 800) * 0.55;
+    s[i] += Math.sin(2 * Math.PI * 2800 * t) * Math.exp(-t * 700) * 0.5;
   }
-  return buildWAV(s);
+
+  // Tonal tail (4–70 ms): quick rising tone = "locking in"
+  const tS = Math.floor(sr * 0.004), tE = Math.floor(sr * 0.070);
+  const dur = (tE - tS) / sr;
+  for (let i = tS; i < tE; i++) {
+    const t = (i - tS) / sr;
+    const phase = 900 * t + (1400 - 900) * t * t / (2 * dur);
+    s[i] += Math.sin(2 * Math.PI * phase) * Math.exp(-t * 55) * 0.38;
+  }
+
+  for (let i = 0; i < n; i++) s[i] = Math.tanh(s[i] * 2) * 0.78;
+  return buildWAV(s, sr);
 })();
 
-// Falling frequency sweep for zoom-out (320ms)
+// Camera-focus click for zoom-out: same snap + brief 1400→700 Hz falling tail (80 ms)
 export const SFX_ZOOM_OUT: string = (() => {
-  const dur = 0.32;
-  const n = Math.floor(SR * dur);
-  const s = new Float32Array(n);
-  const f0 = 2400, f1 = 120;
-  for (let i = 0; i < n; i++) {
-    const t = i / SR;
-    const phase = f0 * t + (f1 - f0) * t * t / (2 * dur);
-    s[i] = Math.sin(2 * Math.PI * phase) * Math.exp(-t * 3.5) * 0.52;
+  const sr = SR_SFX;
+  const n  = Math.floor(sr * 0.08); // 80 ms
+  const s  = new Float32Array(n);
+
+  // Click body (0–6 ms)
+  const cE = Math.floor(sr * 0.006);
+  for (let i = 0; i < cE; i++) {
+    const t = i / sr;
+    s[i] += (Math.random() * 2 - 1) * Math.exp(-t * 800) * 0.55;
+    s[i] += Math.sin(2 * Math.PI * 2000 * t) * Math.exp(-t * 700) * 0.5;
   }
-  return buildWAV(s);
+
+  // Tonal tail (4–70 ms): quick falling tone = "releasing"
+  const tS = Math.floor(sr * 0.004), tE = Math.floor(sr * 0.070);
+  const dur = (tE - tS) / sr;
+  for (let i = tS; i < tE; i++) {
+    const t = (i - tS) / sr;
+    const phase = 1400 * t + (700 - 1400) * t * t / (2 * dur);
+    s[i] += Math.sin(2 * Math.PI * phase) * Math.exp(-t * 60) * 0.35;
+  }
+
+  for (let i = 0; i < n; i++) s[i] = Math.tanh(s[i] * 2) * 0.78;
+  return buildWAV(s, sr);
 })();
 
 // ─── Music Presets ────────────────────────────────────────────────────────────
