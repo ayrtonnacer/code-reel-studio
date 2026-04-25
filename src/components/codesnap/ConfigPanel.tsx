@@ -17,7 +17,8 @@ import type {
   SnippetConfig,
   Theme,
 } from "@/lib/codesnap-types";
-import { Mic, Upload, X } from "lucide-react";
+import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
+import { Mic, Music, Upload, X } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
 
@@ -389,6 +390,58 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           checked={config.showCursor}
           onChange={(v) => onChange({ showCursor: v })}
         />
+
+        {/* Sound effects */}
+        <ToggleRow
+          label="Sound effects (typing + zoom)"
+          checked={config.sfxEnabled}
+          onChange={(v) => onChange({ sfxEnabled: v })}
+        />
+
+        {/* Background music */}
+        <div className="brutal-border bg-concrete p-4 space-y-4">
+          <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
+            <Music className="h-3 w-3" /> Background music
+          </Label>
+
+          <Field label="Preset">
+            <Select
+              value={config.bgMusicPreset ?? "none"}
+              onValueChange={(v) => onChange({ bgMusicPreset: v === "none" ? null : v })}
+            >
+              <SelectTrigger className="brutal-border rounded-none font-mono">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="brutal-border rounded-none">
+                <SelectItem value="none" className="font-mono">None</SelectItem>
+                {MUSIC_PRESETS.map((p) => (
+                  <SelectItem key={p.key} value={p.key} className="font-mono">
+                    {p.label} — {p.description}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {config.bgMusicPreset && (
+            <>
+              <Field label={`Volume · ${Math.round(config.bgMusicVolume * 100)}%`}>
+                <Slider
+                  value={[config.bgMusicVolume]}
+                  min={0} max={1} step={0.05}
+                  onValueChange={([v]) => onChange({ bgMusicVolume: v })}
+                />
+              </Field>
+              <Field label={`Fade out · ${config.bgMusicFadeOut.toFixed(1)}s`}>
+                <Slider
+                  value={[config.bgMusicFadeOut]}
+                  min={0} max={5} step={0.1}
+                  onValueChange={([v]) => onChange({ bgMusicFadeOut: v })}
+                />
+              </Field>
+            </>
+          )}
+        </div>
 
         {/* Audio block */}
         <div className="brutal-border bg-concrete p-4 space-y-4">

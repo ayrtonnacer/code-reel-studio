@@ -73,7 +73,13 @@ export interface SnippetConfig {
   scanEnabled: boolean;
   scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
-  // audio
+  // sound effects
+  sfxEnabled: boolean;
+  // background music preset
+  bgMusicPreset: string | null; // MusicPresetKey or null
+  bgMusicVolume: number; // 0..1
+  bgMusicFadeOut: number; // seconds
+  // voiceover
   audioDataUrl: string | null;
   audioName: string | null;
   audioVolume: number; // 0..1
@@ -114,6 +120,10 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   scanEnabled: true,
   scanSpeed: 0.20,
   scanZoom: 12,
+  sfxEnabled: false,
+  bgMusicPreset: null,
+  bgMusicVolume: 0.25,
+  bgMusicFadeOut: 2.0,
   audioDataUrl: null,
   audioName: null,
   audioVolume: 1.0,
@@ -155,6 +165,48 @@ export function computeDurationFrames(cfg: SnippetConfig): number {
 
   const total = cfg.startDelay + typingSeconds + (cfg.scanEnabled ? 0.35 /* pause */ + scanSec : 0) + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
+}
+
+/** Key video timestamps in seconds — used by export for SFX placement. */
+export function computeVideoTimings(cfg: SnippetConfig): {
+  typingStartSec: number;
+  typingEndSec: number;
+  zoomInStartSec: number;
+  zoomOutStartSec: number;
+} {
+  const typingStartSec = cfg.startDelay;
+  const typingEndSec   = typingStartSec + cfg.code.length / Math.max(1, cfg.typingSpeed);
+
+  if (!cfg.scanEnabled) {
+    return { typingStartSec, typingEndSec, zoomInStartSec: Infinity, zoomOutStartSec: Infinity };
+  }
+
+  const ZOOM_SEC       = 0.45;
+  const SNAP_SEC       = 0.25;
+  const BASE_READ_SEC  = 0.3;
+  const charWidth      = cfg.fontSize * 0.6;
+  const pixelsPerSec   = Math.max(0.1, cfg.scanSpeed * (VIDEO_WIDTH / 1000)) * FPS;
+  const visibleWidth   = VIDEO_WIDTH / Math.max(1, cfg.scanZoom);
+  const xCodeLeft      = cfg.padding * 2;
+  const lines          = cfg.code.split('\n');
+  const lineNumWidth   = cfg.showLineNumbers
+    ? (String(lines.length).length + 1) * charWidth + 24
+    : 0;
+
+  let panDuration = 0;
+  lines.forEach((line, idx) => {
+    const lineContentEnd = xCodeLeft + lineNumWidth + line.trimEnd().length * charWidth;
+    const idealTx    = visibleWidth - lineContentEnd;
+    const targetTx   = Math.min(idealTx, -xCodeLeft);
+    const scrollDist = Math.abs(-xCodeLeft - targetTx);
+    panDuration += BASE_READ_SEC + scrollDist / pixelsPerSec;
+    if (idx < lines.length - 1) panDuration += SNAP_SEC;
+  });
+
+  const zoomInStartSec  = typingEndSec + 0.35;
+  const zoomOutStartSec = zoomInStartSec + ZOOM_SEC + panDuration;
+
+  return { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec };
 }
 
 export function buildBackgroundCss(

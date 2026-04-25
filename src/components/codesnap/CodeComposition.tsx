@@ -4,6 +4,7 @@ import type { SnippetConfig } from "@/lib/codesnap-types";
 import { buildBackgroundCss } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
+import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, type MusicPresetKey } from "@/lib/codesnap-sfx";
 
 interface Props {
   config: SnippetConfig;
@@ -261,8 +262,19 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
 
+  // SFX frame windows
+  const startTypingFrame  = Math.round(config.startDelay * fps);
+  const sfxSweepDurFrames = Math.round(0.32 * fps); // matches SFX_ZOOM_IN/OUT length
+
+  // Background music preset data URL (cached after first call)
+  const bgMusicUrl = useMemo(
+    () => config.bgMusicPreset ? getMusicPreset(config.bgMusicPreset as MusicPresetKey) : null,
+    [config.bgMusicPreset]
+  );
+
   return (
     <AbsoluteFill style={bg.css}>
+      {/* Voiceover */}
       {config.audioDataUrl && (
         <Audio
           src={config.audioDataUrl}
@@ -276,6 +288,45 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             return config.audioVolume * fade;
           }}
         />
+      )}
+
+      {/* Background music preset — loops throughout the video */}
+      {bgMusicUrl && (
+        <Audio
+          src={bgMusicUrl}
+          // @ts-expect-error loop is valid but not yet in Remotion's types
+          loop
+          volume={(f) => {
+            if (config.bgMusicFadeOut <= 0) return config.bgMusicVolume;
+            const fadeFrames = Math.max(1, Math.round(config.bgMusicFadeOut * fps));
+            const fadeStart  = durationInFrames - fadeFrames;
+            const fade = f >= fadeStart
+              ? interpolate(f, [fadeStart, durationInFrames], [1, 0], clamp)
+              : 1;
+            return config.bgMusicVolume * fade;
+          }}
+        />
+      )}
+
+      {/* Sound effects */}
+      {config.sfxEnabled && (
+        <>
+          {/* Typing click loop — plays only while characters are being typed */}
+          {frame >= startTypingFrame && isTyping && (
+            <Audio src={SFX_TYPE_CLICK} volume={0.45}
+              // @ts-expect-error loop is valid but not yet in Remotion's types
+              loop
+            />
+          )}
+          {/* Zoom-in swoosh */}
+          {config.scanEnabled && frame >= scanStartFrame && frame < scanStartFrame + sfxSweepDurFrames && (
+            <Audio src={SFX_ZOOM_IN} volume={0.65} />
+          )}
+          {/* Zoom-out swoosh */}
+          {config.scanEnabled && frame >= zoomOutStartFrame && frame < zoomOutStartFrame + sfxSweepDurFrames && (
+            <Audio src={SFX_ZOOM_OUT} volume={0.65} />
+          )}
+        </>
       )}
 
       {/*

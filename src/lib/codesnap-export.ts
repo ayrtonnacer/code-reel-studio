@@ -2,11 +2,13 @@ import { useState, useCallback } from "react";
 import { toPng } from "html-to-image";
 import {
   computeDurationFrames,
+  computeVideoTimings,
   FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
+import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, type MusicPresetKey } from "@/lib/codesnap-sfx";
 
 export type ExportFormat = "webm" | "mp4";
 
@@ -70,6 +72,9 @@ interface AudioSource {
   dataUrl: string;
   volume: number;
   fadeOut: number; // seconds; 0 = no fade
+  startTime?: number; // seconds from video start (default: 0)
+  endTime?: number;   // seconds to cut the source (for loops with a defined end)
+  loop?: boolean;     // loop the source between startTime and endTime
 }
 
 /** Connect multiple audio sources to a single MediaStreamAudioDestinationNode. */
@@ -91,9 +96,15 @@ async function buildAudioTracks(
     const bufferSource = audioCtx.createBufferSource();
     bufferSource.buffer = audioBuffer;
 
+    if (src.loop) {
+      bufferSource.loop = true;
+      bufferSource.loopEnd = audioBuffer.duration;
+    }
+
     const gainNode = audioCtx.createGain();
     gainNode.gain.value = src.volume;
 
+    const startAt = audioCtx.currentTime + (src.startTime ?? 0);
     if (src.fadeOut > 0) {
       const fadeStart = Math.max(0, totalSec - src.fadeOut);
       gainNode.gain.setValueAtTime(src.volume, audioCtx.currentTime + fadeStart);
@@ -102,7 +113,8 @@ async function buildAudioTracks(
 
     bufferSource.connect(gainNode);
     gainNode.connect(dest);
-    bufferSource.start(audioCtx.currentTime);
+    bufferSource.start(startAt);
+    if (src.endTime != null) bufferSource.stop(audioCtx.currentTime + src.endTime);
   }
 
   return { tracks: dest.stream.getAudioTracks(), audioCtx };
@@ -132,20 +144,31 @@ async function mixAudioBuffers(
   const numChannels = Math.max(...buffers.map((b) => b.buf.numberOfChannels));
   const channels: Float32Array[] = Array.from({ length: numChannels }, () => new Float32Array(totalSamples));
 
-  for (const { buf, vol, fadeOut } of buffers) {
+  for (let si = 0; si < buffers.length; si++) {
+    const { buf, vol, fadeOut } = buffers[si];
+    const src = sources[si];
     const fadeOutSamples = Math.round(fadeOut * sampleRate);
-    const fadeStart = totalSamples - fadeOutSamples;
+    const fadeStart      = totalSamples - fadeOutSamples;
+    const startSample    = Math.round((src.startTime ?? 0) * sampleRate);
+    const endSample      = src.endTime != null
+      ? Math.min(Math.round(src.endTime * sampleRate), totalSamples)
+      : totalSamples;
 
     for (let ch = 0; ch < numChannels; ch++) {
-      const srcCh = Math.min(ch, buf.numberOfChannels - 1);
+      const srcCh   = Math.min(ch, buf.numberOfChannels - 1);
       const srcData = buf.getChannelData(srcCh);
-      const limit = Math.min(srcData.length, totalSamples);
-      for (let s = 0; s < limit; s++) {
-        let v = srcData[s] * vol;
-        if (fadeOut > 0 && s >= fadeStart && fadeOutSamples > 0) {
-          v *= 1 - (s - fadeStart) / fadeOutSamples;
+      const maxJ    = src.loop ? endSample - startSample : Math.min(srcData.length, endSample - startSample);
+
+      for (let j = 0; j < maxJ; j++) {
+        const outS   = startSample + j;
+        if (outS >= totalSamples) break;
+        const srcIdx = src.loop ? j % srcData.length : j;
+        if (!src.loop && srcIdx >= srcData.length) break;
+        let v = srcData[srcIdx] * vol;
+        if (fadeOut > 0 && outS >= fadeStart && fadeOutSamples > 0) {
+          v *= 1 - (outS - fadeStart) / fadeOutSamples;
         }
-        channels[ch][s] = Math.max(-1, Math.min(1, channels[ch][s] + v));
+        channels[ch][outS] = Math.max(-1, Math.min(1, channels[ch][outS] + v));
       }
     }
   }
@@ -153,11 +176,51 @@ async function mixAudioBuffers(
   return { channels, sampleRate };
 }
 
-function buildAudioSources(config: SnippetConfig): AudioSource[] {
+function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSource[] {
   const sources: AudioSource[] = [];
+  const totalSec = totalFrames / FPS;
+
+  // Voiceover
   if (config.audioDataUrl) {
     sources.push({ dataUrl: config.audioDataUrl, volume: config.audioVolume, fadeOut: config.audioFadeOut });
   }
+
+  // Background music preset
+  if (config.bgMusicPreset) {
+    sources.push({
+      dataUrl: getMusicPreset(config.bgMusicPreset as MusicPresetKey),
+      volume: config.bgMusicVolume,
+      fadeOut: config.bgMusicFadeOut,
+      loop: true,
+      endTime: totalSec,
+    });
+  }
+
+  // Sound effects
+  if (config.sfxEnabled) {
+    const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec } = computeVideoTimings(config);
+
+    // Typing click loop
+    sources.push({
+      dataUrl: SFX_TYPE_CLICK,
+      volume: 0.45,
+      fadeOut: 0,
+      startTime: typingStartSec,
+      endTime: typingEndSec,
+      loop: true,
+    });
+
+    // Zoom-in swoosh
+    if (isFinite(zoomInStartSec)) {
+      sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.65, fadeOut: 0, startTime: zoomInStartSec });
+    }
+
+    // Zoom-out swoosh
+    if (isFinite(zoomOutStartSec)) {
+      sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.65, fadeOut: 0, startTime: zoomOutStartSec });
+    }
+  }
+
   return sources;
 }
 
@@ -189,7 +252,7 @@ async function encodeWebm(
   const canvasStream = canvas.captureStream(FPS);
   const tracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()];
 
-  const audioSources = buildAudioSources(config);
+  const audioSources = buildAudioSources(config, totalFrames);
   const audioResult = await buildAudioTracks(audioSources, totalFrames);
   if (audioResult) {
     audioResult.tracks.forEach((t) => tracks.push(t));
@@ -230,7 +293,7 @@ async function encodeMp4(
 ): Promise<Blob> {
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
 
-  const audioSources = buildAudioSources(config);
+  const audioSources = buildAudioSources(config, totalFrames);
   const mixedAudio = audioSources.length > 0 ? await mixAudioBuffers(audioSources, totalFrames) : null;
 
   const target = new ArrayBufferTarget();
