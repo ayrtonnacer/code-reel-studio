@@ -5,6 +5,7 @@ import { buildBackgroundCss } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_INTRO_WHOOSH, type MusicPresetKey } from "@/lib/codesnap-sfx";
+import { MetallicPaint } from "./MetallicPaint";
 
 interface Props {
   config: SnippetConfig;
@@ -25,7 +26,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     [config.code, config.language]
   );
 
-  const elapsedSec = frame / fps - config.startDelay;
+  // When intro is enabled, all typing/scan logic is offset by introDuration
+  const introFrames = config.introEnabled ? Math.round(config.introDuration * fps) : 0;
+  const effectiveFrame = Math.max(0, frame - introFrames);
+
+  const elapsedSec = effectiveFrame / fps - config.startDelay;
   const charsTyped = Math.max(0, Math.floor(elapsedSec * config.typingSpeed));
 
   let remaining = charsTyped;
@@ -47,8 +52,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const cursorVisible = Math.floor(frame / (fps * 0.5)) % 2 === 0;
 
-  const introOpacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
-  const introScale   = interpolate(frame, [0, 18], [0.96, 1], { extrapolateRight: "clamp" });
+  const introOpacity = interpolate(effectiveFrame, [0, 18], [0, 1], { extrapolateRight: "clamp" });
+  const introScale   = interpolate(effectiveFrame, [0, 22], [0.96, 1], { extrapolateRight: "clamp" });
 
   const colorFor = (type: string): string => {
     switch (type) {
@@ -111,7 +116,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const ZOOM_FRAMES = Math.round(fps * 0.45);
   const snapFrames  = Math.round(fps * 0.25); // always fast, independent of scanSpeed
 
-  const typingEndFrame = Math.round(
+  const typingEndFrame = introFrames + Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
   );
   const scanStartFrame = config.scanEnabled
@@ -254,15 +259,26 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     }
   }
 
-  // Title fades out at 1.5 s
+  // Title in code card fades out 1.5 s after typing starts
   const titleOpacity =
     config.showTitle && config.title.trim()
-      ? interpolate(frame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], clamp)
+      ? interpolate(effectiveFrame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], clamp)
       : 0;
 
   const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
 
-  const startTypingFrame = Math.round(config.startDelay * fps);
+  const startTypingFrame = introFrames + Math.round(config.startDelay * fps);
+
+  // Intro overlay: fades out over last 0.4 s of intro duration
+  const introFadeStart = Math.max(0, introFrames - Math.round(fps * 0.4));
+  const introOverlayOpacity = config.introEnabled
+    ? interpolate(frame, [introFadeStart, introFrames], [1, 0], clamp)
+    : 0;
+  // Entrance animations for intro text (relative to video start)
+  const introTextIn   = interpolate(frame, [0, Math.round(fps * 0.5)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introTitleY   = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [48, 0], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introTitleIn  = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introMetalIn  = interpolate(frame, [Math.round(fps * 0.35), Math.round(fps * 1.0)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
 
   // Background music: uploaded file takes priority over preset
   const bgMusicUrl = useMemo(
@@ -502,6 +518,85 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         </div>
       </div>
+      {/* ── Intro overlay ── shows for introDuration seconds before typing starts */}
+      {config.introEnabled && (
+        <AbsoluteFill
+          style={{
+            ...bg.css,
+            zIndex: 50,
+            opacity: introOverlayOpacity,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Top half — subtitle + title */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            paddingBottom: 56,
+            paddingLeft: 80,
+            paddingRight: 80,
+            gap: 20,
+          }}>
+            {config.introSubtitle.trim() && (
+              <div style={{
+                fontFamily: fontScale,
+                fontSize: 36,
+                fontWeight: 500,
+                color: 'rgba(255,255,255,0.5)',
+                letterSpacing: '0.13em',
+                textTransform: 'uppercase' as const,
+                opacity: introTextIn,
+              }}>
+                {config.introSubtitle}
+              </div>
+            )}
+            <div style={{
+              fontFamily: fontScale,
+              fontSize: 86,
+              fontWeight: 800,
+              color: '#ffffff',
+              textAlign: 'center' as const,
+              lineHeight: 1.1,
+              letterSpacing: '-0.025em',
+              opacity: introTitleIn,
+              transform: `translateY(${introTitleY}px)`,
+            }}>
+              {config.title || config.filename}
+            </div>
+          </div>
+
+          {/* Bottom half — MetallicPaint */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: introMetalIn,
+          }}>
+            <div style={{ width: 860, height: 860 }}>
+              <MetallicPaint
+                imageSrc="/intro-shape.svg"
+                speed={0.28}
+                scale={4.5}
+                refraction={0.012}
+                blur={0.012}
+                liquid={0.8}
+                brightness={2.4}
+                contrast={0.45}
+                lightColor="#ffffff"
+                darkColor="#0d0d1a"
+                tintColor="#7c3aed"
+                waveAmplitude={1.1}
+                noiseScale={0.45}
+              />
+            </div>
+          </div>
+        </AbsoluteFill>
+      )}
     </AbsoluteFill>
   );
 };

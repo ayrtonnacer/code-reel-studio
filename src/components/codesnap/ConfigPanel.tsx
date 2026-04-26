@@ -18,7 +18,7 @@ import type {
   Theme,
 } from "@/lib/codesnap-types";
 import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
-import { Mic, Music, Upload, X } from "lucide-react";
+import { Clapperboard, Mic, Music, Upload, X } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
 
@@ -318,6 +318,37 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             />
           </Field>
         )}
+
+        {/* Intro card */}
+        <div className="brutal-border bg-concrete p-4 space-y-4">
+          <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
+            <Clapperboard className="h-3 w-3" /> Intro card
+          </Label>
+          <ToggleRow
+            label="Show intro before typing"
+            checked={config.introEnabled}
+            onChange={(v) => onChange({ introEnabled: v })}
+          />
+          {config.introEnabled && (
+            <>
+              <Field label="Subtitle (above title)">
+                <Input
+                  value={config.introSubtitle}
+                  onChange={(e) => onChange({ introSubtitle: e.target.value })}
+                  className="font-mono brutal-border rounded-none"
+                  placeholder="e.g. Tutorial 1"
+                />
+              </Field>
+              <Field label={`Duration · ${config.introDuration.toFixed(1)}s`}>
+                <Slider
+                  value={[config.introDuration]}
+                  min={1} max={8} step={0.5}
+                  onValueChange={([v]) => onChange({ introDuration: v })}
+                />
+              </Field>
+            </>
+          )}
+        </div>
 
         <Field label="Brand handle">
           <Input

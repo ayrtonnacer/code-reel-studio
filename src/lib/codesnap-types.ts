@@ -73,6 +73,10 @@ export interface SnippetConfig {
   scanEnabled: boolean;
   scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
+  // intro card
+  introEnabled: boolean;
+  introSubtitle: string; // small label above title, e.g. "Tutorial 1"
+  introDuration: number; // seconds
   // sound effects
   sfxEnabled: boolean;
   sfxVolume: number; // 0..1 — master volume for all SFX
@@ -123,6 +127,9 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   scanEnabled: true,
   scanSpeed: 0.20,
   scanZoom: 12,
+  introEnabled: false,
+  introSubtitle: "Tutorial 1",
+  introDuration: 3.5,
   sfxEnabled: true,
   sfxVolume: 0.7,
   bgMusicPreset: null,
@@ -169,7 +176,8 @@ export function computeDurationFrames(cfg: SnippetConfig): number {
     if (idx < lines.length - 1) scanSec += SNAP_SEC;
   });
 
-  const total = cfg.startDelay + typingSeconds + (cfg.scanEnabled ? 0.35 /* pause */ + scanSec : 0) + cfg.holdEnd;
+  const introSec = cfg.introEnabled ? cfg.introDuration : 0;
+  const total = introSec + cfg.startDelay + typingSeconds + (cfg.scanEnabled ? 0.35 /* pause */ + scanSec : 0) + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
 }
 
@@ -180,7 +188,8 @@ export function computeVideoTimings(cfg: SnippetConfig): {
   zoomInStartSec: number;
   zoomOutStartSec: number;
 } {
-  const typingStartSec = cfg.startDelay;
+  const introSec = cfg.introEnabled ? cfg.introDuration : 0;
+  const typingStartSec = introSec + cfg.startDelay;
   const typingEndSec   = typingStartSec + cfg.code.length / Math.max(1, cfg.typingSpeed);
 
   if (!cfg.scanEnabled) {
