@@ -123,7 +123,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   scanEnabled: true,
   scanSpeed: 0.20,
   scanZoom: 12,
-  sfxEnabled: false,
+  sfxEnabled: true,
   sfxVolume: 0.7,
   bgMusicPreset: null,
   bgMusicDataUrl: null,

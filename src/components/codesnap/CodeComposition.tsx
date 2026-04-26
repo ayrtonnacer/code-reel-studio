@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, Audio } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, Audio, Sequence } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
 import { buildBackgroundCss } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
@@ -264,10 +264,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const startTypingFrame = Math.round(config.startDelay * fps);
 
-  // Background music preset data URL (cached after first call)
+  // Background music: uploaded file takes priority over preset
   const bgMusicUrl = useMemo(
-    () => config.bgMusicPreset ? getMusicPreset(config.bgMusicPreset as MusicPresetKey) : null,
-    [config.bgMusicPreset]
+    () => config.bgMusicDataUrl
+      ?? (config.bgMusicPreset ? getMusicPreset(config.bgMusicPreset as MusicPresetKey) : null),
+    [config.bgMusicDataUrl, config.bgMusicPreset]
   );
 
   return (
@@ -309,25 +310,33 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       {/* Sound effects */}
       {config.sfxEnabled && (
         <>
-          {/* Intro whoosh — plays from frame 0 (one-shot) */}
-          <Audio src={SFX_INTRO_WHOOSH} volume={0.75} />
+          {/* Intro pop — one-shot at frame 0 */}
+          <Sequence from={0}>
+            <Audio src={SFX_INTRO_WHOOSH} volume={config.sfxVolume * 0.75} />
+          </Sequence>
 
-          {/* Typing click loop — plays only while characters are being typed */}
+          {/* Typing click — loops while characters are being typed */}
           {frame >= startTypingFrame && isTyping && (
-            <Audio src={SFX_TYPE_CLICK} volume={0.55}
+            <Audio
+              src={SFX_TYPE_CLICK}
+              volume={config.sfxVolume * 0.55}
               // @ts-expect-error loop is valid but not yet in Remotion's types
               loop
             />
           )}
 
-          {/* Zoom-in click (one-shot at scan start) */}
-          {config.scanEnabled && frame >= scanStartFrame && (
-            <Audio src={SFX_ZOOM_IN} volume={0.75} />
+          {/* Zoom-in click — one-shot at scan start */}
+          {config.scanEnabled && (
+            <Sequence from={scanStartFrame}>
+              <Audio src={SFX_ZOOM_IN} volume={config.sfxVolume * 0.75} />
+            </Sequence>
           )}
 
-          {/* Zoom-out click (one-shot at zoom-out start) */}
-          {config.scanEnabled && frame >= zoomOutStartFrame && (
-            <Audio src={SFX_ZOOM_OUT} volume={0.75} />
+          {/* Zoom-out click — one-shot when camera pulls back */}
+          {config.scanEnabled && (
+            <Sequence from={zoomOutStartFrame}>
+              <Audio src={SFX_ZOOM_OUT} volume={config.sfxVolume * 0.75} />
+            </Sequence>
           )}
         </>
       )}
