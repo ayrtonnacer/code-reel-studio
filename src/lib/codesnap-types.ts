@@ -75,8 +75,11 @@ export interface SnippetConfig {
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
   // sound effects
   sfxEnabled: boolean;
-  // background music preset
-  bgMusicPreset: string | null; // MusicPresetKey or null
+  sfxVolume: number; // 0..1 — master volume for all SFX
+  // background music
+  bgMusicPreset: string | null; // MusicPresetKey or null (used when no file uploaded)
+  bgMusicDataUrl: string | null; // uploaded file takes priority over preset
+  bgMusicName: string | null;
   bgMusicVolume: number; // 0..1
   bgMusicFadeOut: number; // seconds
   // voiceover
@@ -121,7 +124,10 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   scanSpeed: 0.20,
   scanZoom: 12,
   sfxEnabled: false,
+  sfxVolume: 0.7,
   bgMusicPreset: null,
+  bgMusicDataUrl: null,
+  bgMusicName: null,
   bgMusicVolume: 0.25,
   bgMusicFadeOut: 2.0,
   audioDataUrl: null,

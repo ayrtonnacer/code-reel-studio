@@ -185,10 +185,12 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
     sources.push({ dataUrl: config.audioDataUrl, volume: config.audioVolume, fadeOut: config.audioFadeOut });
   }
 
-  // Background music preset
-  if (config.bgMusicPreset) {
+  // Background music: uploaded file takes priority over preset
+  const musicDataUrl = config.bgMusicDataUrl
+    ?? (config.bgMusicPreset ? getMusicPreset(config.bgMusicPreset as MusicPresetKey) : null);
+  if (musicDataUrl) {
     sources.push({
-      dataUrl: getMusicPreset(config.bgMusicPreset as MusicPresetKey),
+      dataUrl: musicDataUrl,
       volume: config.bgMusicVolume,
       fadeOut: config.bgMusicFadeOut,
       loop: true,
@@ -198,15 +200,16 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
 
   // Sound effects
   if (config.sfxEnabled) {
+    const sfxVol = config.sfxVolume ?? 1;
     const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec } = computeVideoTimings(config);
 
-    // Intro whoosh at t=0
-    sources.push({ dataUrl: SFX_INTRO_WHOOSH, volume: 0.75, fadeOut: 0, startTime: 0 });
+    // Intro pop at t=0
+    sources.push({ dataUrl: SFX_INTRO_WHOOSH, volume: 0.75 * sfxVol, fadeOut: 0, startTime: 0 });
 
     // Typing click loop
     sources.push({
       dataUrl: SFX_TYPE_CLICK,
-      volume: 0.55,
+      volume: 0.55 * sfxVol,
       fadeOut: 0,
       startTime: typingStartSec,
       endTime: typingEndSec,
@@ -215,12 +218,12 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
 
     // Zoom-in click
     if (isFinite(zoomInStartSec)) {
-      sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.75, fadeOut: 0, startTime: zoomInStartSec });
+      sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomInStartSec });
     }
 
     // Zoom-out click
     if (isFinite(zoomOutStartSec)) {
-      sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.75, fadeOut: 0, startTime: zoomOutStartSec });
+      sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomOutStartSec });
     }
   }
 

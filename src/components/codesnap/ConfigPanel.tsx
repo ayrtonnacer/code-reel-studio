@@ -78,24 +78,29 @@ const DIRECTIONS: { value: GradientDirection; label: string }[] = [
 
 export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const musicInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAudioFile = async (file: File) => {
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Audio file too large", {
-        description: "Maximum 10MB per file.",
-      });
+  const loadAudioFile = (file: File, onLoad: (dataUrl: string) => void) => {
+    if (file.size > 30 * 1024 * 1024) {
+      toast.error("Audio file too large", { description: "Maximum 30MB per file." });
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
-      onChange({
-        audioDataUrl: reader.result as string,
-        audioName: file.name,
-      });
-      toast.success("Music loaded", { description: file.name });
-    };
+    reader.onload = () => onLoad(reader.result as string);
     reader.readAsDataURL(file);
   };
+
+  const handleAudioFile = (file: File) =>
+    loadAudioFile(file, (dataUrl) => {
+      onChange({ audioDataUrl: dataUrl, audioName: file.name });
+      toast.success("Voiceover loaded", { description: file.name });
+    });
+
+  const handleMusicFile = (file: File) =>
+    loadAudioFile(file, (dataUrl) => {
+      onChange({ bgMusicDataUrl: dataUrl, bgMusicName: file.name, bgMusicPreset: null });
+      toast.success("Music loaded", { description: file.name });
+    });
 
   return (
     <Tabs defaultValue="style" className="w-full">
@@ -398,32 +403,74 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           onChange={(v) => onChange({ sfxEnabled: v })}
         />
 
+        {config.sfxEnabled && (
+          <Field label={`SFX volume · ${Math.round(config.sfxVolume * 100)}%`}>
+            <Slider
+              value={[config.sfxVolume]}
+              min={0} max={1} step={0.05}
+              onValueChange={([v]) => onChange({ sfxVolume: v })}
+            />
+          </Field>
+        )}
+
         {/* Background music */}
         <div className="brutal-border bg-concrete p-4 space-y-4">
-          <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
-            <Music className="h-3 w-3" /> Background music
-          </Label>
+          <div className="flex items-center justify-between">
+            <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
+              <Music className="h-3 w-3" /> Background music
+            </Label>
+            {config.bgMusicName && (
+              <button
+                onClick={() => onChange({ bgMusicDataUrl: null, bgMusicName: null })}
+                className="font-mono text-[10px] tracking-wide flex items-center gap-1 hover:text-ember"
+              >
+                <X className="h-3 w-3" /> Remove
+              </button>
+            )}
+          </div>
 
-          <Field label="Preset">
-            <Select
-              value={config.bgMusicPreset ?? "none"}
-              onValueChange={(v) => onChange({ bgMusicPreset: v === "none" ? null : v })}
-            >
-              <SelectTrigger className="brutal-border rounded-none font-mono">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="brutal-border rounded-none">
-                <SelectItem value="none" className="font-mono">None</SelectItem>
-                {MUSIC_PRESETS.map((p) => (
-                  <SelectItem key={p.key} value={p.key} className="font-mono">
-                    {p.label} — {p.description}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <input
+            ref={musicInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleMusicFile(f);
+              e.target.value = "";
+            }}
+          />
 
-          {config.bgMusicPreset && (
+          <button
+            onClick={() => musicInputRef.current?.click()}
+            className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            {config.bgMusicName ?? "Upload music file"}
+          </button>
+
+          {!config.bgMusicDataUrl && (
+            <Field label="Preset">
+              <Select
+                value={config.bgMusicPreset ?? "none"}
+                onValueChange={(v) => onChange({ bgMusicPreset: v === "none" ? null : v })}
+              >
+                <SelectTrigger className="brutal-border rounded-none font-mono">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="brutal-border rounded-none">
+                  <SelectItem value="none" className="font-mono">None</SelectItem>
+                  {MUSIC_PRESETS.map((p) => (
+                    <SelectItem key={p.key} value={p.key} className="font-mono">
+                      {p.label} — {p.description}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+
+          {(config.bgMusicDataUrl || config.bgMusicPreset) && (
             <>
               <Field label={`Volume · ${Math.round(config.bgMusicVolume * 100)}%`}>
                 <Slider
