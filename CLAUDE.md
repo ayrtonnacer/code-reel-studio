@@ -26,9 +26,7 @@ CodeSnap Video converts code snippets into vertical 9:16 videos (1080×1920px, 3
 
 1. `CodeComposition.tsx` — Remotion composition. Uses `useCurrentFrame()` to calculate how many characters to reveal at the current frame, producing a typing animation. Tokenizes code for syntax highlighting and renders inline-styled spans.
 2. `PreviewPlayer.tsx` — wraps Remotion's `<Player>` for live preview with play/pause/fullscreen controls.
-3. `ExportDialog.tsx` + `useVideoExport` hook (`src/lib/codesnap-export.ts`) — renders every frame as PNG via `html-to-image`, then encodes the PNG sequence to MP4 (H.264 via libx264) using FFmpeg.wasm. Optionally mixes in audio with fade-out.
-
-**FFmpeg.wasm** loads ~30MB on first export (cached by the browser). All encoding is client-side.
+3. `ExportDialog.tsx` + `useVideoExport` hook (`src/lib/codesnap-export.ts`) — renders every frame as PNG via `html-to-image`. Encodes to MP4 (H.264) via the browser's WebCodecs API + `mp4-muxer`, or falls back to WebM via `MediaRecorder`. Audio is mixed in using the Web Audio API. All encoding is fully client-side.
 
 **Custom tokenizer** in `src/lib/codesnap-tokenize.ts` — lightweight lexer supporting 17 languages; returns `Token[]` with type classifications used by `CodeComposition` for coloring.
 
@@ -38,8 +36,8 @@ CodeSnap Video converts code snippets into vertical 9:16 videos (1080×1920px, 3
 
 | File | Role |
 |------|------|
-| `src/lib/codesnap-types.ts` | `SnippetConfig` type, `DEFAULT_CONFIG`, FPS/dimension constants |
-| `src/lib/codesnap-export.ts` | `useVideoExport` hook — FFmpeg encoding logic |
+| `src/lib/codesnap-types.ts` | `SnippetConfig` type, `DEFAULT_CONFIG`, FPS/dimension constants, `computeLinePanTimings` (single scan-timing source) |
+| `src/lib/codesnap-export.ts` | `useVideoExport` hook — WebCodecs/mp4-muxer encoding logic |
 | `src/lib/codesnap-tokenize.ts` | Custom syntax tokenizer |
 | `src/lib/codesnap-themes.ts` | Theme color maps |
 | `src/components/codesnap/CodeComposition.tsx` | Remotion composition (frame renderer) |
@@ -50,10 +48,10 @@ CodeSnap Video converts code snippets into vertical 9:16 videos (1080×1920px, 3
 ## Video Duration Formula
 
 ```
-totalFrames = (startDelay + (code.length / typingSpeed) + holdEnd) * FPS
+totalFrames = (introDuration + startDelay + (code.length / typingSpeed) + [scanSec if enabled] + holdEnd) * FPS
 ```
 
-`FPS = 30`, dimensions `1080×1920`. These constants live in `codesnap-types.ts`.
+`FPS = 30`, dimensions `1080×1920`. These constants live in `codesnap-types.ts`. Use `computeDurationFrames(cfg)` — it is the single authoritative source for duration (used by both `PreviewPlayer` and `ExportDialog`). The scan timing is centralized in `computeLinePanTimings(cfg)`, shared by `computeDurationFrames`, `computeVideoTimings`, and `CodeComposition`.
 
 ## UI Stack
 

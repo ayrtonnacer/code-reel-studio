@@ -147,37 +147,49 @@ export const FPS = 30;
 export const VIDEO_WIDTH = 1080;
 export const VIDEO_HEIGHT = 1920;
 
-export function computeDurationFrames(cfg: SnippetConfig): number {
-  const chars = cfg.code.length;
-  const typingSeconds = chars / Math.max(1, cfg.typingSpeed);
+export const SCAN_ZOOM_FRAMES     = Math.round(FPS * 0.45);
+export const SCAN_SNAP_FRAMES     = Math.round(FPS * 0.25);
+export const SCAN_BASE_READ_FRAMES = Math.round(FPS * 0.3);
+export const SCAN_PRE_PAUSE_FRAMES = Math.round(FPS * 0.35);
 
-  // Scan-read effect duration (must mirror the logic in CodeComposition)
-  const lines         = cfg.code.split("\n");
-  const ZOOM_SEC      = 0.45;  // zoom-in / zoom-out each
-  const SNAP_SEC      = 0.25;  // snap between lines
-  const BASE_READ_SEC = 0.3;   // minimum read time per line
-  const charWidth     = cfg.fontSize * 0.6;
-  const pixelsPerFrame = Math.max(0.1, cfg.scanSpeed * (VIDEO_WIDTH / 1000));
-  const pixelsPerSec   = pixelsPerFrame * FPS;
+export interface LinePanTiming {
+  scrollDist: number;
+  readFrames: number;
+}
+
+export function computeLinePanTimings(cfg: SnippetConfig): LinePanTiming[] {
+  const charWidth      = cfg.fontSize * 0.6;
   const visibleWidth   = VIDEO_WIDTH / Math.max(1, cfg.scanZoom);
   const xCodeLeft      = cfg.padding * 2;
+  const pixelsPerFrame = Math.max(0.1, cfg.scanSpeed * (VIDEO_WIDTH / 1000));
+  const lines          = cfg.code.split("\n");
   const lineNumWidth   = cfg.showLineNumbers
     ? (String(lines.length).length + 1) * charWidth + 24
     : 0;
-
-  let scanSec = ZOOM_SEC + ZOOM_SEC; // zoom-in + zoom-out
-  lines.forEach((line, idx) => {
+  return lines.map(line => {
     const lineContentEnd = xCodeLeft + lineNumWidth + line.trimEnd().length * charWidth;
-    const idealTx  = visibleWidth - lineContentEnd;
-    const targetTx = Math.min(idealTx, -xCodeLeft);
+    const idealTx    = visibleWidth - lineContentEnd;
+    const targetTx   = Math.min(idealTx, -xCodeLeft);
     const scrollDist = Math.abs(-xCodeLeft - targetTx);
-    const readSec = BASE_READ_SEC + scrollDist / pixelsPerSec;
-    scanSec += readSec;
-    if (idx < lines.length - 1) scanSec += SNAP_SEC;
+    const readFrames = SCAN_BASE_READ_FRAMES + Math.round(scrollDist / pixelsPerFrame);
+    return { scrollDist, readFrames };
   });
+}
 
+export function computeDurationFrames(cfg: SnippetConfig): number {
+  const typingSeconds = cfg.code.length / Math.max(1, cfg.typingSpeed);
   const introSec = cfg.introEnabled ? cfg.introDuration : 0;
-  const total = introSec + cfg.startDelay + typingSeconds + (cfg.scanEnabled ? 0.35 /* pause */ + scanSec : 0) + cfg.holdEnd;
+
+  let scanSec = 0;
+  if (cfg.scanEnabled) {
+    const panTimings = computeLinePanTimings(cfg);
+    const scanFrames = SCAN_ZOOM_FRAMES * 2
+      + panTimings.reduce((sum, t) => sum + t.readFrames, 0)
+      + SCAN_SNAP_FRAMES * (panTimings.length - 1);
+    scanSec = SCAN_PRE_PAUSE_FRAMES / FPS + scanFrames / FPS;
+  }
+
+  const total = introSec + cfg.startDelay + typingSeconds + scanSec + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
 }
 
@@ -196,30 +208,12 @@ export function computeVideoTimings(cfg: SnippetConfig): {
     return { typingStartSec, typingEndSec, zoomInStartSec: Infinity, zoomOutStartSec: Infinity };
   }
 
-  const ZOOM_SEC       = 0.45;
-  const SNAP_SEC       = 0.25;
-  const BASE_READ_SEC  = 0.3;
-  const charWidth      = cfg.fontSize * 0.6;
-  const pixelsPerSec   = Math.max(0.1, cfg.scanSpeed * (VIDEO_WIDTH / 1000)) * FPS;
-  const visibleWidth   = VIDEO_WIDTH / Math.max(1, cfg.scanZoom);
-  const xCodeLeft      = cfg.padding * 2;
-  const lines          = cfg.code.split('\n');
-  const lineNumWidth   = cfg.showLineNumbers
-    ? (String(lines.length).length + 1) * charWidth + 24
-    : 0;
+  const panTimings  = computeLinePanTimings(cfg);
+  const panFrames   = panTimings.reduce((sum, t) => sum + t.readFrames, 0)
+    + SCAN_SNAP_FRAMES * (panTimings.length - 1);
 
-  let panDuration = 0;
-  lines.forEach((line, idx) => {
-    const lineContentEnd = xCodeLeft + lineNumWidth + line.trimEnd().length * charWidth;
-    const idealTx    = visibleWidth - lineContentEnd;
-    const targetTx   = Math.min(idealTx, -xCodeLeft);
-    const scrollDist = Math.abs(-xCodeLeft - targetTx);
-    panDuration += BASE_READ_SEC + scrollDist / pixelsPerSec;
-    if (idx < lines.length - 1) panDuration += SNAP_SEC;
-  });
-
-  const zoomInStartSec  = typingEndSec + 0.35;
-  const zoomOutStartSec = zoomInStartSec + ZOOM_SEC + panDuration;
+  const zoomInStartSec  = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS;
+  const zoomOutStartSec = zoomInStartSec + SCAN_ZOOM_FRAMES / FPS + panFrames / FPS;
 
   return { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec };
 }

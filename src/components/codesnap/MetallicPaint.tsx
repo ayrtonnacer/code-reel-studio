@@ -135,6 +135,7 @@ interface MetallicPaintProps {
   distortion?: number;
   contour?: number;
   tintColor?: string;
+  currentTimeMs?: number; // when provided, drives animation deterministically (Remotion frame mode)
 }
 
 export function MetallicPaint({
@@ -158,6 +159,7 @@ export function MetallicPaint({
   distortion = 1,
   contour = 0.2,
   tintColor = '#feb3ff',
+  currentTimeMs,
 }: MetallicPaintProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<WebGL2RenderingContext | null>(null);
@@ -271,8 +273,9 @@ export function MetallicPaint({
     gl.uniform1f(u.u_distort, distortion); gl.uniform1f(u.u_contour, contour);
   }, [ready, seed, scale, refraction, blur, liquid, brightness, contrast, angle, fresnel, lightColor, darkColor, patternSharpness, waveAmplitude, noiseScale, chromaticSpread, distortion, contour, tintColor]);
 
+  // Real-time rAF loop — only runs when not driven by a Remotion frame
   useEffect(() => {
-    if (!ready || !textureReady) return;
+    if (!ready || !textureReady || currentTimeMs !== undefined) return;
     const gl = glRef.current!;
     const u = uniformsRef.current;
     const render = (time: number) => {
@@ -285,7 +288,16 @@ export function MetallicPaint({
     lastTimeRef.current = performance.now();
     rafRef.current = requestAnimationFrame(render);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [ready, textureReady]);
+  }, [ready, textureReady, currentTimeMs]);
+
+  // Deterministic rendering — driven by Remotion's useCurrentFrame via currentTimeMs prop
+  useEffect(() => {
+    if (currentTimeMs === undefined || !ready || !textureReady) return;
+    const gl = glRef.current!;
+    const u = uniformsRef.current;
+    gl.uniform1f(u.u_time, currentTimeMs * speedRef.current);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }, [currentTimeMs, ready, textureReady]);
 
   return (
     <canvas

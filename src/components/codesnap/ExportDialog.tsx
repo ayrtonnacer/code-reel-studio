@@ -5,6 +5,7 @@ import {
   FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
+  computeDurationFrames,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
 import { useVideoExport, isMp4Supported, type ExportFormat } from "@/lib/codesnap-export";
@@ -33,7 +34,7 @@ export const ExportDialog: React.FC<Props> = ({
 }) => {
   const offscreenRef = useRef<HTMLDivElement>(null);
   const [renderFrame, setRenderFrame] = useState(0);
-  const [format, setFormat] = useState<ExportFormat>("webm");
+  const [format, setFormat] = useState<ExportFormat>(() => isMp4Supported() ? "mp4" : "webm");
   const setFramePromiseRef = useRef<(() => void) | null>(null);
   const { progress, exportWithFrameSetter, reset } = useVideoExport();
   const mp4Supported = isMp4Supported();
@@ -252,15 +253,7 @@ export const ExportDialog: React.FC<Props> = ({
             inputProps={{ config }}
             compositionWidth={VIDEO_WIDTH}
             compositionHeight={VIDEO_HEIGHT}
-            durationInFrames={Math.max(
-              FPS,
-              Math.round(
-                (config.startDelay +
-                  config.code.length / Math.max(1, config.typingSpeed) +
-                  config.holdEnd) *
-                  FPS
-              )
-            )}
+            durationInFrames={computeDurationFrames(config)}
             fps={FPS}
             frameToDisplay={renderFrame}
             style={{ width: VIDEO_WIDTH, height: VIDEO_HEIGHT }}

@@ -1,7 +1,14 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, Audio, Sequence } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
-import { buildBackgroundCss } from "@/lib/codesnap-types";
+import {
+  buildBackgroundCss,
+  computeLinePanTimings,
+  SCAN_ZOOM_FRAMES,
+  SCAN_SNAP_FRAMES,
+  SCAN_BASE_READ_FRAMES,
+  SCAN_PRE_PAUSE_FRAMES,
+} from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_INTRO_WHOOSH, type MusicPresetKey } from "@/lib/codesnap-sfx";
@@ -111,18 +118,16 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const codeAreaTop    = cardTop + chromeH + config.padding; // abs-y of first code line
 
   // X: code content starts at padding*2 from scene left, spans to width−padding*2
-  const xCodeLeft   = config.padding * 2;
-  const SCAN_ZOOM   = config.scanZoom;
-  const ZOOM_FRAMES = Math.round(fps * 0.45);
-  const snapFrames  = Math.round(fps * 0.25); // always fast, independent of scanSpeed
+  const xCodeLeft = config.padding * 2;
+  const SCAN_ZOOM = config.scanZoom;
 
   const typingEndFrame = introFrames + Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
   );
   const scanStartFrame = config.scanEnabled
-    ? typingEndFrame + Math.round(fps * 0.35)
+    ? typingEndFrame + SCAN_PRE_PAUSE_FRAMES
     : Infinity;
-  const zoomInEndFrame = scanStartFrame + ZOOM_FRAMES;
+  const zoomInEndFrame = scanStartFrame + SCAN_ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
   const clamp     = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
@@ -168,27 +173,25 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     });
   }, [codeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
 
-  // Distribute frames dynamically: speed is constant (pixels/frame), so longer lines get more time
-  const { lineSchedules, dynamicScanFrames } = useMemo(() => {
-    const BASE_READ_FRAMES = Math.round(fps * 0.3);
-    const pixelsPerFrame   = Math.max(0.1, config.scanSpeed * (width / 1000));
+  // Centralized pan timings — same formula as computeDurationFrames / computeVideoTimings
+  const panTimings = useMemo(() => computeLinePanTimings(config), [config]);
 
+  const { lineSchedules, dynamicScanFrames } = useMemo(() => {
     let cursor = 0;
     const schedules = lineMetrics.map((m, idx) => {
-      const readDuration = BASE_READ_FRAMES + Math.round(m.scrollDist / pixelsPerFrame);
+      const readDuration = panTimings[idx]?.readFrames ?? SCAN_BASE_READ_FRAMES;
       const start   = cursor;
       const end     = start + readDuration;
-      const snapEnd = idx === lineMetrics.length - 1 ? end : end + snapFrames;
+      const snapEnd = idx === lineMetrics.length - 1 ? end : end + SCAN_SNAP_FRAMES;
       cursor = snapEnd;
       return { start, end, snapEnd };
     });
-
     return { lineSchedules: schedules, dynamicScanFrames: cursor };
-  }, [lineMetrics, config.scanSpeed, fps, snapFrames, width]);
+  }, [lineMetrics, panTimings]);
 
   const panEndFrame       = panStartFrame + dynamicScanFrames;
   const zoomOutStartFrame = panEndFrame;
-  const zoomOutEndFrame   = zoomOutStartFrame + ZOOM_FRAMES;
+  const zoomOutEndFrame   = zoomOutStartFrame + SCAN_ZOOM_FRAMES;
 
   let sceneZoom        = 1;
   let sceneTranslateX  = 0;
@@ -219,17 +222,17 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     const inLineFrame = scanFrame - sched.start;
 
     if (scanFrame < sched.end) {
-      // ── Read phase: sweep left → right, stop when right edge hits last char ──
+      // ── Read phase: sweep left → right with ease-in-out for smooth feel ──
       effectiveScrollY = curr.scroll;
       sceneTranslateY  = curr.Ty;
-      sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], clamp);
+      sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], easeInOut);
     } else {
-      // ── Snap phase: fast diagonal jump to start of next line ─────
+      // ── Snap phase: easeOut for a soft landing on the next line ──────────
       const next = lineMetrics[currentIdx + 1] || curr;
       const snapFrame = scanFrame - sched.end;
-      effectiveScrollY = interpolate(snapFrame, [0, snapFrames], [curr.scroll, next.scroll], clamp);
-      sceneTranslateY  = interpolate(snapFrame, [0, snapFrames], [curr.Ty,     next.Ty],     clamp);
-      sceneTranslateX  = interpolate(snapFrame, [0, snapFrames], [curr.targetTx, Tx_left],    clamp);
+      effectiveScrollY = interpolate(snapFrame, [0, SCAN_SNAP_FRAMES], [curr.scroll, next.scroll], easeOut);
+      sceneTranslateY  = interpolate(snapFrame, [0, SCAN_SNAP_FRAMES], [curr.Ty,     next.Ty],     easeOut);
+      sceneTranslateX  = interpolate(snapFrame, [0, SCAN_SNAP_FRAMES], [curr.targetTx, Tx_left],    easeOut);
     }
 
   } else if (frame <= zoomOutEndFrame) {
@@ -527,19 +530,20 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             opacity: introOverlayOpacity,
             display: 'flex',
             flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 48,
+            paddingBottom: 200,
           }}
         >
-          {/* Top half — subtitle + title */}
+          {/* Title group — subtitle + main title */}
           <div style={{
-            flex: 1,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'flex-end',
-            paddingBottom: 56,
+            gap: 16,
             paddingLeft: 80,
             paddingRight: 80,
-            gap: 20,
           }}>
             {config.introSubtitle.trim() && (
               <div style={{
@@ -569,31 +573,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             </div>
           </div>
 
-          {/* Bottom half — MetallicPaint */}
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: introMetalIn,
-          }}>
-            <div style={{ width: 860, height: 860 }}>
-              <MetallicPaint
-                imageSrc="/intro-shape.svg"
-                speed={0.28}
-                scale={4.5}
-                refraction={0.012}
-                blur={0.012}
-                liquid={0.8}
-                brightness={2.4}
-                contrast={0.45}
-                lightColor="#ffffff"
-                darkColor="#0d0d1a"
-                tintColor="#7c3aed"
-                waveAmplitude={1.1}
-                noiseScale={0.45}
-              />
-            </div>
+          {/* MetallicPaint — deterministic time driven from Remotion frame */}
+          <div style={{ width: 600, height: 600, opacity: introMetalIn }}>
+            <MetallicPaint
+              imageSrc="/intro-shape.svg"
+              speed={0.28}
+              scale={4.5}
+              refraction={0.012}
+              blur={0.012}
+              liquid={0.8}
+              brightness={2.4}
+              contrast={0.45}
+              lightColor="#ffffff"
+              darkColor="#0d0d1a"
+              tintColor="#7c3aed"
+              waveAmplitude={1.1}
+              noiseScale={0.45}
+              currentTimeMs={(frame / fps) * 1000}
+            />
           </div>
         </AbsoluteFill>
       )}
