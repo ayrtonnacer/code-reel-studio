@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, Audio, Sequence } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
 import {
   buildBackgroundCss,
@@ -222,17 +222,23 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     const inLineFrame = scanFrame - sched.start;
 
     if (scanFrame < sched.end) {
-      // ── Read phase: sweep left → right with ease-in-out for smooth feel ──
+      // ── Read phase: easeOut sweeps fast then decelerates (natural saccade) ──
       effectiveScrollY = curr.scroll;
       sceneTranslateY  = curr.Ty;
-      sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], easeInOut);
+      sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], easeOut);
     } else {
-      // ── Snap phase: easeOut for a soft landing on the next line ──────────
+      // ── Snap phase: spring physics for a fluid, natural diagonal jump ──────
       const next = lineMetrics[currentIdx + 1] || curr;
       const snapFrame = scanFrame - sched.end;
-      effectiveScrollY = interpolate(snapFrame, [0, SCAN_SNAP_FRAMES], [curr.scroll, next.scroll], easeOut);
-      sceneTranslateY  = interpolate(snapFrame, [0, SCAN_SNAP_FRAMES], [curr.Ty,     next.Ty],     easeOut);
-      sceneTranslateX  = interpolate(snapFrame, [0, SCAN_SNAP_FRAMES], [curr.targetTx, Tx_left],    easeOut);
+      const snapProgress = spring({
+        fps,
+        frame: snapFrame,
+        config: { damping: 40, stiffness: 200 },
+        durationInFrames: SCAN_SNAP_FRAMES,
+      });
+      effectiveScrollY = curr.scroll  + (next.scroll  - curr.scroll)  * snapProgress;
+      sceneTranslateY  = curr.Ty      + (next.Ty      - curr.Ty)      * snapProgress;
+      sceneTranslateX  = curr.targetTx + (Tx_left     - curr.targetTx) * snapProgress;
     }
 
   } else if (frame <= zoomOutEndFrame) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 
 const vertexShader = `#version 300 es
 precision highp float;
@@ -290,8 +290,9 @@ export function MetallicPaint({
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [ready, textureReady, currentTimeMs]);
 
-  // Deterministic rendering — driven by Remotion's useCurrentFrame via currentTimeMs prop
-  useEffect(() => {
+  // Deterministic rendering — fires synchronously after React commit (before rAF),
+  // so html-to-image always captures the correct frame during export.
+  useLayoutEffect(() => {
     if (currentTimeMs === undefined || !ready || !textureReady) return;
     const gl = glRef.current!;
     const u = uniformsRef.current;

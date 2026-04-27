@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { Thumbnail } from "@remotion/player";
 import { CodeComposition } from "./CodeComposition";
 import {
@@ -35,20 +36,16 @@ export const ExportDialog: React.FC<Props> = ({
   const offscreenRef = useRef<HTMLDivElement>(null);
   const [renderFrame, setRenderFrame] = useState(0);
   const [format, setFormat] = useState<ExportFormat>(() => isMp4Supported() ? "mp4" : "webm");
-  const setFramePromiseRef = useRef<(() => void) | null>(null);
   const { progress, exportWithFrameSetter, reset } = useVideoExport();
   const mp4Supported = isMp4Supported();
 
+  // flushSync forces React to commit the new frame synchronously so the
+  // Thumbnail DOM (and any useLayoutEffects like MetallicPaint's GL draw)
+  // are fully updated before html-to-image captures the frame.
   const setFrame = useCallback((frame: number) => {
     return new Promise<void>((resolve) => {
-      setFramePromiseRef.current = resolve;
-      setRenderFrame(frame);
-      requestAnimationFrame(() => {
-        if (setFramePromiseRef.current === resolve) {
-          setFramePromiseRef.current = null;
-          resolve();
-        }
-      });
+      flushSync(() => setRenderFrame(frame));
+      requestAnimationFrame(resolve);
     });
   }, []);
 
