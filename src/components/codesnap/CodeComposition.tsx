@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence, Video } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
 import {
   buildBackgroundCss,
@@ -12,7 +12,6 @@ import {
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_INTRO_WHOOSH, type MusicPresetKey } from "@/lib/codesnap-sfx";
-import { MetallicPaint } from "./MetallicPaint";
 
 interface Props {
   config: SnippetConfig;
@@ -284,10 +283,12 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     ? interpolate(frame, [introFadeStart, introFrames], [1, 0], clamp)
     : 0;
   // Entrance animations for intro text (relative to video start)
-  const introTextIn   = interpolate(frame, [0, Math.round(fps * 0.5)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const introTitleY   = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [48, 0], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const introTitleIn  = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const introMetalIn  = interpolate(frame, [Math.round(fps * 0.35), Math.round(fps * 1.0)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introTextIn  = interpolate(frame, [0, Math.round(fps * 0.5)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introTitleY  = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [48, 0], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introTitleIn = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+  const introVideoIn = interpolate(frame, [Math.round(fps * 0.2), Math.round(fps * 0.8)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
+
+  const introVideoSrc = config.introVideoDataUrl ?? '/intro-video.mp4';
 
   // Background music: uploaded file takes priority over preset
   const bgMusicUrl = useMemo(
@@ -435,8 +436,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           width: width - config.padding * 2,
           maxHeight: height - 420,
           background: theme.bg,
-          border: "1px solid rgba(255, 255, 255, 0.08)",
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.5)",
+          border: `1px solid ${theme.border}`,
+          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.35)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
@@ -448,8 +449,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               alignItems: "center",
               gap: 8,
               padding: "16px 20px",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-              background: "rgba(0, 0, 0, 0.2)",
+              borderBottom: `1px solid ${theme.border}`,
+              background: "rgba(0, 0, 0, 0.12)",
             }}>
               <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ff5f56" }} />
               <div style={{ width: 12, height: 12, borderRadius: 999, background: "#ffbd2e" }} />
@@ -457,7 +458,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               <div style={{
                 marginLeft: 16,
                 fontFamily: "'JetBrains Mono', monospace",
-                color: "rgba(255, 255, 255, 0.4)",
+                color: theme.lineNumber,
                 fontSize: 18,
                 fontWeight: 400,
               }}>
@@ -531,47 +532,66 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       {config.introEnabled && (
         <AbsoluteFill
           style={{
-            ...bg.css,
+            backgroundColor: '#D0D1CE',
             zIndex: 50,
             opacity: introOverlayOpacity,
+          }}
+        >
+          {/* Top section: brand + subtitle + title (~42% height) */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '42%',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 48,
-            paddingBottom: 200,
-          }}
-        >
-          {/* Title group — subtitle + main title */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 16,
+            gap: 20,
             paddingLeft: 80,
             paddingRight: 80,
           }}>
+            {/* Brand handle */}
+            <div style={{
+              position: 'absolute',
+              top: 72,
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 26,
+              fontWeight: 400,
+              color: 'rgba(0,0,0,0.35)',
+              letterSpacing: '0.08em',
+              opacity: introTextIn,
+            }}>
+              {config.brandHandle}
+            </div>
+
+            {/* Subtitle */}
             {config.introSubtitle.trim() && (
               <div style={{
-                fontFamily: fontScale,
-                fontSize: 36,
-                fontWeight: 500,
-                color: 'rgba(255,255,255,0.5)',
-                letterSpacing: '0.13em',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 30,
+                fontWeight: 400,
+                color: 'rgba(0,0,0,0.45)',
+                letterSpacing: '0.18em',
                 textTransform: 'uppercase' as const,
                 opacity: introTextIn,
               }}>
                 {config.introSubtitle}
               </div>
             )}
+
+            {/* Main title — Y2K chrome style */}
             <div style={{
-              fontFamily: fontScale,
-              fontSize: 86,
-              fontWeight: 800,
-              color: '#ffffff',
+              fontFamily: "'Archivo Black', 'Arial Black', sans-serif",
+              fontSize: 88,
+              fontWeight: 900,
+              color: '#0a0a0a',
               textAlign: 'center' as const,
-              lineHeight: 1.1,
-              letterSpacing: '-0.025em',
+              lineHeight: 1.05,
+              letterSpacing: '0.01em',
+              textTransform: 'uppercase' as const,
+              textShadow: '2px 2px 0 rgba(255,255,255,0.6), -1px -1px 0 rgba(0,0,0,0.15)',
               opacity: introTitleIn,
               transform: `translateY(${introTitleY}px)`,
             }}>
@@ -579,23 +599,27 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             </div>
           </div>
 
-          {/* MetallicPaint — deterministic time driven from Remotion frame */}
-          <div style={{ width: 600, height: 600, opacity: introMetalIn }}>
-            <MetallicPaint
-              imageSrc="/intro-shape.svg"
-              speed={0.28}
-              scale={4.5}
-              refraction={0.012}
-              blur={0.012}
-              liquid={0.8}
-              brightness={2.4}
-              contrast={0.45}
-              lightColor="#ffffff"
-              darkColor="#0d0d1a"
-              tintColor="#7c3aed"
-              waveAmplitude={1.1}
-              noiseScale={0.45}
-              currentTimeMs={(frame / fps) * 1000}
+          {/* Bottom section: intro video (~58% height) */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '58%',
+            overflow: 'hidden',
+            opacity: introVideoIn,
+          }}>
+            <Video
+              src={introVideoSrc}
+              // @ts-expect-error muted is valid
+              muted
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover' as const,
+                objectPosition: 'center',
+                display: 'block',
+              }}
             />
           </div>
         </AbsoluteFill>

@@ -112,6 +112,20 @@ export const THEMES: Record<Theme, ThemeTokens> = {
     cursor: "#ffffff",
     border: "#1a1a1a",
   },
+  "chrome-y2k": {
+    bg: "#D0D1CE",
+    text: "#0d0d0d",
+    comment: "#5a6e7a",
+    keyword: "#0033cc",
+    string: "#cc0044",
+    number: "#7700bb",
+    function: "#005599",
+    variable: "#884400",
+    punctuation: "#2a2a2a",
+    lineNumber: "#7a7a7a",
+    cursor: "#0033cc",
+    border: "rgba(0,0,0,0.18)",
+  },
 };
 export interface BackgroundDef {
   css: React.CSSProperties;
@@ -162,6 +176,11 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
       backgroundColor: "#0a0a0a",
       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E")`,
       backgroundSize: "200px 200px",
+    },
+  },
+  "chrome-flat": {
+    css: {
+      backgroundColor: "#D0D1CE",
     },
   },
 };

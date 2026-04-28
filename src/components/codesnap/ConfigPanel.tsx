@@ -18,7 +18,7 @@ import type {
   Theme,
 } from "@/lib/codesnap-types";
 import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
-import { Clapperboard, Mic, Music, Upload, X } from "lucide-react";
+import { Clapperboard, Film, Mic, Music, Upload, X } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
 
@@ -54,6 +54,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: "dracula", label: "Dracula" },
   { value: "paper-light", label: "Paper Light" },
   { value: "vercel-dark", label: "Vercel Dark" },
+  { value: "chrome-y2k", label: "Chrome Y2K" },
 ];
 
 const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
@@ -64,6 +65,7 @@ const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
   { value: "duotone-pop", label: "Duotone Pop" },
   { value: "custom-gradient", label: "Custom Gradient" },
   { value: "vercel-grain", label: "Vercel Grain" },
+  { value: "chrome-flat", label: "Chrome Flat" },
 ];
 
 const DIRECTIONS: { value: GradientDirection; label: string }[] = [
@@ -79,6 +81,7 @@ const DIRECTIONS: { value: GradientDirection; label: string }[] = [
 export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
+  const introVideoInputRef = useRef<HTMLInputElement>(null);
 
   const loadAudioFile = (file: File, onLoad: (dataUrl: string) => void) => {
     if (file.size > 30 * 1024 * 1024) {
@@ -101,6 +104,19 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
       onChange({ bgMusicDataUrl: dataUrl, bgMusicName: file.name, bgMusicPreset: null });
       toast.success("Music loaded", { description: file.name });
     });
+
+  const handleIntroVideoFile = (file: File) => {
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("Video too large", { description: "Maximum 100MB." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      onChange({ introVideoDataUrl: reader.result as string, introVideoName: file.name });
+      toast.success("Intro video loaded", { description: file.name });
+    };
+    reader.readAsDataURL(file);
+  };
 
   return (
     <Tabs defaultValue="style" className="w-full">
@@ -346,6 +362,46 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
                   onValueChange={([v]) => onChange({ introDuration: v })}
                 />
               </Field>
+
+              {/* Intro video upload */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
+                    <Film className="h-3 w-3" /> Animation video
+                  </Label>
+                  {config.introVideoName && (
+                    <button
+                      onClick={() => onChange({ introVideoDataUrl: null, introVideoName: null })}
+                      className="font-mono text-[10px] tracking-wide flex items-center gap-1 hover:text-ember"
+                    >
+                      <X className="h-3 w-3" /> Reset to default
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={introVideoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleIntroVideoFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  onClick={() => introVideoInputRef.current?.click()}
+                  className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember transition-colors"
+                >
+                  <Upload className="h-4 w-4" />
+                  {config.introVideoName ?? "Upload intro video (MP4)"}
+                </button>
+                {!config.introVideoName && (
+                  <p className="text-[10px] font-mono text-muted-foreground">
+                    Using default · upload your own MP4 to replace
+                  </p>
+                )}
+              </div>
             </>
           )}
         </div>

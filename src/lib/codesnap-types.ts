@@ -23,7 +23,8 @@ export type Theme =
   | "monokai"
   | "dracula"
   | "paper-light"
-  | "vercel-dark";
+  | "vercel-dark"
+  | "chrome-y2k";
 
 export type BackgroundStyle =
   | "ember-gradient"
@@ -32,7 +33,8 @@ export type BackgroundStyle =
   | "paper-noise"
   | "duotone-pop"
   | "custom-gradient"
-  | "vercel-grain";
+  | "vercel-grain"
+  | "chrome-flat";
 
 export type GradientDirection =
   | "to right"
@@ -77,6 +79,8 @@ export interface SnippetConfig {
   introEnabled: boolean;
   introSubtitle: string; // small label above title, e.g. "Tutorial 1"
   introDuration: number; // seconds
+  introVideoDataUrl: string | null; // uploaded MP4 for intro animation
+  introVideoName: string | null;
   // sound effects
   sfxEnabled: boolean;
   sfxVolume: number; // 0..1 — master volume for all SFX
@@ -130,6 +134,8 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   introEnabled: false,
   introSubtitle: "Tutorial 1",
   introDuration: 3.5,
+  introVideoDataUrl: null,
+  introVideoName: null,
   sfxEnabled: true,
   sfxVolume: 0.7,
   bgMusicPreset: null,
