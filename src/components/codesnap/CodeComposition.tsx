@@ -27,6 +27,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       ? { css: buildBackgroundCss(config.customGradient) }
       : BACKGROUNDS[config.background];
 
+  const isY2K = config.theme === 'chrome-y2k';
+  const isLightBg = config.background === 'chrome-flat' || config.background === 'paper-noise';
+
   const tokens = useMemo(
     () => tokenize(config.code, config.language),
     [config.code, config.language]
@@ -396,7 +399,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         >
           <div style={{
             fontFamily: fontScale,
-            color: "rgba(255, 255, 255, 0.4)",
+            color: isLightBg ? "rgba(0, 0, 0, 0.28)" : "rgba(255, 255, 255, 0.4)",
             fontSize: 24,
             letterSpacing: "0.02em",
             fontWeight: 500,
@@ -417,7 +420,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             fontSize: 58,
             lineHeight: 1.15,
             letterSpacing: "-0.02em",
-            color: "#fff",
+            color: isLightBg ? "#0a0a0a" : "#fff",
             fontWeight: 700,
             textAlign: "center",
             opacity: titleOpacity,
@@ -436,14 +439,63 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           width: width - config.padding * 2,
           maxHeight: height - 420,
           background: theme.bg,
-          border: `1px solid ${theme.border}`,
-          boxShadow: "0 24px 64px rgba(0, 0, 0, 0.35)",
+          border: isY2K ? `2px solid #000` : `1px solid ${theme.border}`,
+          boxShadow: isY2K ? "8px 8px 0 rgba(0,0,0,0.18)" : "0 24px 64px rgba(0, 0, 0, 0.35)",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          borderRadius: 4,
+          borderRadius: isY2K ? 0 : 4,
         }}>
-          {config.windowChrome && (
+          {config.windowChrome && (isY2K ? (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              padding: "0 20px",
+              borderBottom: `2px solid #000`,
+              background: "linear-gradient(180deg, #4488ff 0%, #1155dd 50%, #0044bb 100%)",
+              height: 46,
+              gap: 0,
+            }}>
+              <div style={{
+                flex: 1,
+                fontFamily: "'JetBrains Mono', monospace",
+                color: '#ffffff',
+                fontSize: 19,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase' as const,
+                textShadow: '1px 1px 2px rgba(0,0,50,0.6)',
+              }}>
+                {config.filename}
+              </div>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {[
+                  { label: '—', bold: false },
+                  { label: '□', bold: false },
+                  { label: '✕', bold: true },
+                ].map((btn, i) => (
+                  <div key={i} style={{
+                    width: 26,
+                    height: 22,
+                    backgroundColor: '#c0c0c0',
+                    border: '2px solid',
+                    borderColor: '#ffffff #606060 #606060 #ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 14,
+                    fontFamily: 'Arial, Helvetica, sans-serif',
+                    fontWeight: btn.bold ? 'bold' : 'normal',
+                    color: '#000000',
+                    lineHeight: 1,
+                    userSelect: 'none' as const,
+                  }}>
+                    {btn.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
             <div style={{
               display: "flex",
               alignItems: "center",
@@ -465,7 +517,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 {config.filename}
               </div>
             </div>
-          )}
+          ))}
 
           <div style={{
             flex: 1,
@@ -486,12 +538,12 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 <div key={lineIdx} style={{
                   display: "flex",
                   minHeight: lineHeight,
-                  background: lineIdx === highlightLineIdx ? "rgba(255,255,255,0.09)" : "transparent",
+                  background: lineIdx === highlightLineIdx ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)") : "transparent",
                   borderRadius: 2,
                 }}>
                   {config.showLineNumbers && (
                     <span style={{
-                      color: "rgba(255, 255, 255, 0.2)",
+                      color: theme.lineNumber,
                       width: `${String(totalLines).length + 1}ch`,
                       textAlign: "right",
                       paddingRight: 24,
@@ -528,11 +580,23 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         </div>
       </div>
+      {/* Subtle CRT scanline texture for Y2K/cybercore feel */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 5,
+          backgroundImage: 'repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.025) 2px, rgba(0,0,0,0.025) 3px)',
+          backgroundSize: '100% 3px',
+        }}
+      />
+
       {/* ── Intro overlay ── shows for introDuration seconds before typing starts */}
       {config.introEnabled && (
         <AbsoluteFill
           style={{
-            backgroundColor: '#D0D1CE',
+            backgroundColor: '#ffffff',
             zIndex: 50,
             opacity: introOverlayOpacity,
           }}
@@ -559,7 +623,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: 26,
               fontWeight: 400,
-              color: 'rgba(0,0,0,0.35)',
+              color: 'rgba(0, 0, 180, 0.5)',
               letterSpacing: '0.08em',
               opacity: introTextIn,
             }}>
@@ -572,7 +636,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: 30,
                 fontWeight: 400,
-                color: 'rgba(0,0,0,0.45)',
+                color: 'rgba(0, 0, 180, 0.6)',
                 letterSpacing: '0.18em',
                 textTransform: 'uppercase' as const,
                 opacity: introTextIn,
@@ -581,7 +645,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               </div>
             )}
 
-            {/* Main title — Y2K chrome style */}
+            {/* Main title — Y2K style */}
             <div style={{
               fontFamily: "'Archivo Black', 'Arial Black', sans-serif",
               fontSize: 88,
@@ -591,13 +655,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               lineHeight: 1.05,
               letterSpacing: '0.01em',
               textTransform: 'uppercase' as const,
-              textShadow: '2px 2px 0 rgba(255,255,255,0.6), -1px -1px 0 rgba(0,0,0,0.15)',
+              textShadow: '2px 2px 0 rgba(0,0,180,0.12), -1px -1px 0 rgba(0,0,0,0.08)',
               opacity: introTitleIn,
               transform: `translateY(${introTitleY}px)`,
             }}>
               {config.title || config.filename}
             </div>
           </div>
+
+          {/* Y2K accent line separating text from video */}
+          <div style={{
+            position: 'absolute',
+            top: 'calc(42% - 2px)',
+            left: 0,
+            right: 0,
+            height: 4,
+            background: 'linear-gradient(90deg, transparent 0%, #0044cc 15%, #0088ff 50%, #0044cc 85%, transparent 100%)',
+            zIndex: 2,
+          }} />
 
           {/* Bottom section: intro video (~58% height) */}
           <div style={{

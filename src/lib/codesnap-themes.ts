@@ -113,18 +113,18 @@ export const THEMES: Record<Theme, ThemeTokens> = {
     border: "#1a1a1a",
   },
   "chrome-y2k": {
-    bg: "#D0D1CE",
+    bg: "#ffffff",
     text: "#0d0d0d",
-    comment: "#5a6e7a",
+    comment: "#5a7080",
     keyword: "#0033cc",
     string: "#cc0044",
     number: "#7700bb",
     function: "#005599",
     variable: "#884400",
     punctuation: "#2a2a2a",
-    lineNumber: "#7a7a7a",
+    lineNumber: "#c0c0c0",
     cursor: "#0033cc",
-    border: "rgba(0,0,0,0.18)",
+    border: "#000000",
   },
 };
 export interface BackgroundDef {
@@ -180,7 +180,7 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
   },
   "chrome-flat": {
     css: {
-      backgroundColor: "#D0D1CE",
+      backgroundColor: "#ffffff",
     },
   },
 };
