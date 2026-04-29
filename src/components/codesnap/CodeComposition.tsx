@@ -1,9 +1,10 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence, Video } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
 import {
   buildBackgroundCss,
   computeLinePanTimings,
+  computeVideoTimings,
   SCAN_ZOOM_FRAMES,
   SCAN_SNAP_FRAMES,
   SCAN_BASE_READ_FRAMES,
@@ -11,10 +12,26 @@ import {
 } from "@/lib/codesnap-types";
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
-import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_INTRO_WHOOSH, type MusicPresetKey } from "@/lib/codesnap-sfx";
+import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
 
 interface Props {
   config: SnippetConfig;
+}
+
+// Returns the comment prefix string for the given language
+function getCommentPrefix(lang: SnippetConfig["language"]): string {
+  switch (lang) {
+    case "python": case "ruby": case "bash":
+      return "# ";
+    case "html":
+      return "<!-- ";
+    case "css":
+      return "/* ";
+    case "sql":
+      return "-- ";
+    default:
+      return "// ";
+  }
 }
 
 export const CodeComposition: React.FC<Props> = ({ config }) => {
@@ -28,18 +45,23 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       : BACKGROUNDS[config.background];
 
   const isY2K = config.theme === 'chrome-y2k';
-  const isLightBg = config.background === 'chrome-flat' || config.background === 'paper-noise';
+  const isLightBg = config.background === 'chrome-flat' || config.background === 'paper-noise'
+    || config.background === 'custom-gradient' || !!config.backgroundImageDataUrl;
 
   const tokens = useMemo(
     () => tokenize(config.code, config.language),
     [config.code, config.language]
   );
 
-  // When intro is enabled, all typing/scan logic is offset by introDuration
-  const introFrames = config.introEnabled ? Math.round(config.introDuration * fps) : 0;
-  const effectiveFrame = Math.max(0, frame - introFrames);
+  // Outro text — prefixed with language comment marker
+  const outroPrefix = config.outroEnabled && config.outroText
+    ? getCommentPrefix(config.language)
+    : "";
+  const outroFull = config.outroEnabled && config.outroText
+    ? outroPrefix + config.outroText
+    : "";
 
-  const elapsedSec = effectiveFrame / fps - config.startDelay;
+  const elapsedSec = frame / fps - config.startDelay;
   const charsTyped = Math.max(0, Math.floor(elapsedSec * config.typingSpeed));
 
   let remaining = charsTyped;
@@ -57,12 +79,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   }
 
   const totalChars = config.code.length;
-  const isTyping   = charsTyped < totalChars;
+  const isTypingCode = charsTyped < totalChars;
+
+  // Outro typing
+  const timings = useMemo(() => computeVideoTimings(config), [config]);
+  const outroStartFrame = config.outroEnabled && outroFull.length > 0
+    ? Math.round(timings.outroStartSec * fps)
+    : Infinity;
+  const outroElapsed = frame >= outroStartFrame
+    ? (frame - outroStartFrame) / fps * config.typingSpeed
+    : 0;
+  const outroCharsTyped = Math.min(Math.floor(outroElapsed), outroFull.length);
+  const outroVisible = outroFull.slice(0, outroCharsTyped);
+  const isTypingOutro = outroFull.length > 0 && outroCharsTyped < outroFull.length && frame >= outroStartFrame;
 
   const cursorVisible = Math.floor(frame / (fps * 0.5)) % 2 === 0;
 
-  const introOpacity = interpolate(effectiveFrame, [0, 18], [0, 1], { extrapolateRight: "clamp" });
-  const introScale   = interpolate(effectiveFrame, [0, 22], [0.96, 1], { extrapolateRight: "clamp" });
+  const introOpacity = interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp" });
+  const introScale   = interpolate(frame, [0, 22], [0.96, 1], { extrapolateRight: "clamp" });
 
   const colorFor = (type: string): string => {
     switch (type) {
@@ -96,34 +130,25 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   // Auto-scroll during typing
   const cardInnerHeight = height - config.padding * 2 - 200;
   const maxVisibleLines = Math.floor(cardInnerHeight / lineHeight);
-  const scrollLines     = Math.max(0, visibleLineCount - maxVisibleLines + 2);
-  const typingScrollY   = -scrollLines * lineHeight;
+
+  // Account for outro line when scrolling
+  const extraOutroLine = outroVisible.length > 0 ? 1 : 0;
+  const scrollLines = Math.max(0, visibleLineCount + extraOutroLine - maxVisibleLines + 2);
+  const typingScrollY = -scrollLines * lineHeight;
 
   // ── Scan-read effect ─────────────────────────────────────────────────
-  //
-  // After typing: zoom in (origin = left edge) and scan each line
-  // left-to-right like a reading cursor, then zoom back out.
-  //
-  // Transform: scale(Z) translateX(Tx) translateY(Ty)
-  // with transformOrigin '0% 50%'  (x=0, y=H/2)
-  //
-  //   screen_x = (orig_x + Tx) * Z
-  //   screen_y = (orig_y + Ty − H/2) * Z + H/2
-  //
-  // Card geometry
   const chromeH        = config.windowChrome ? 46 : 0;
   const cardH          = Math.min(
     totalLines * lineHeight + config.padding * 2 + chromeH,
     height - 420
   );
   const cardTop        = (height - cardH) / 2;
-  const codeAreaTop    = cardTop + chromeH + config.padding; // abs-y of first code line
+  const codeAreaTop    = cardTop + chromeH + config.padding;
 
-  // X: code content starts at padding*2 from scene left, spans to width−padding*2
   const xCodeLeft = config.padding * 2;
   const SCAN_ZOOM = config.scanZoom;
 
-  const typingEndFrame = introFrames + Math.round(
+  const typingEndFrame = Math.round(
     (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
   );
   const scanStartFrame = config.scanEnabled
@@ -136,33 +161,23 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const easeOut   = { ...clamp, easing: Easing.out(Easing.cubic) };
   const easeInOut = { ...clamp, easing: Easing.inOut(Easing.cubic) };
 
-  // translateX anchor: origin is at the left edge of the code area
   const Tx_left = -xCodeLeft;
 
-  // ── Per-line scan metrics ─────────────────────────────────────────────
-  // JetBrains Mono ≈ 0.6em per character
   const charWidth    = config.fontSize * 0.6;
   const lineNumWidth = config.showLineNumbers
     ? (String(totalLines).length + 1) * charWidth + 24
     : 0;
 
-  // Clean text for width calculation (trimEnd prevents overshooting into trailing spaces)
-  const codeLines = useMemo(() =>
-    config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()),
+  const codeLines = useMemo(
+    () => config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()),
     [config.code]
   );
 
-  // Pre-calculate target Tx and geometry for every line
   const lineMetrics = useMemo(() => {
     const visibleWidth = width / SCAN_ZOOM;
 
     return codeLines.map((lineText, idx) => {
       const lineContentEnd = xCodeLeft + lineNumWidth + lineText.length * charWidth;
-
-      // We want the RIGHT edge of the zoomed viewport to land exactly on lineContentEnd:
-      //   screen_right = (lineContentEnd + Tx) * SCAN_ZOOM = width
-      //   → Tx = (width / SCAN_ZOOM) - lineContentEnd
-      // Clamp so we never over-scroll left of Tx_left.
       const idealTx  = visibleWidth - lineContentEnd;
       const targetTx = Math.min(idealTx, Tx_left);
       const scrollDist = Math.abs(Tx_left - targetTx);
@@ -175,7 +190,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     });
   }, [codeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
 
-  // Centralized pan timings — same formula as computeDurationFrames / computeVideoTimings
   const panTimings = useMemo(() => computeLinePanTimings(config), [config]);
 
   const { lineSchedules, dynamicScanFrames } = useMemo(() => {
@@ -204,7 +218,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     effectiveScrollY = typingScrollY;
 
   } else if (frame <= zoomInEndFrame) {
-    // Zoom-in to top-left of first code line
     const m0 = lineMetrics[0];
     sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], easeOut);
     sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], easeOut);
@@ -215,7 +228,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     sceneZoom = SCAN_ZOOM;
     const scanFrame = frame - panStartFrame;
 
-    // Find which line we are currently scanning
     const lineIdx = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
     const currentIdx = lineIdx === -1 ? lineSchedules.length - 1 : lineIdx;
 
@@ -224,12 +236,10 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     const inLineFrame = scanFrame - sched.start;
 
     if (scanFrame < sched.end) {
-      // ── Read phase: easeOut sweeps fast then decelerates (natural saccade) ──
       effectiveScrollY = curr.scroll;
       sceneTranslateY  = curr.Ty;
       sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], easeOut);
     } else {
-      // ── Snap phase: spring physics for a fluid, natural diagonal jump ──────
       const next = lineMetrics[currentIdx + 1] || curr;
       const snapFrame = scanFrame - sched.end;
       const snapProgress = spring({
@@ -244,7 +254,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     }
 
   } else if (frame <= zoomOutEndFrame) {
-    // Zoom-out from last scanned line back to full view
     const lastLine = lineMetrics[lineMetrics.length - 1];
     sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], easeInOut);
     sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.Ty, 0], easeInOut);
@@ -255,12 +264,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     sceneZoom        = 1;
     sceneTranslateX  = 0;
     sceneTranslateY  = 0;
-    effectiveScrollY = 0;
+    effectiveScrollY = typingScrollY;
   }
 
-  // ─── Scan highlight: current line being read ─────────────────────────
+  // Scan highlight
   let highlightLineIdx = -1;
-
   if (frame >= panStartFrame && frame < panEndFrame) {
     const scanF = frame - panStartFrame;
     const li = lineSchedules.findIndex(s => scanF < s.snapEnd);
@@ -270,30 +278,17 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     }
   }
 
-  // Title in code card fades out 1.5 s after typing starts
+  // Title fades out 1.5s after typing starts
   const titleOpacity =
     config.showTitle && config.title.trim()
-      ? interpolate(effectiveFrame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], clamp)
+      ? interpolate(frame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], clamp)
       : 0;
 
   const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
 
-  const startTypingFrame = introFrames + Math.round(config.startDelay * fps);
+  const startTypingFrame = Math.round(config.startDelay * fps);
 
-  // Intro overlay: fades out over last 0.4 s of intro duration
-  const introFadeStart = Math.max(0, introFrames - Math.round(fps * 0.4));
-  const introOverlayOpacity = config.introEnabled
-    ? interpolate(frame, [introFadeStart, introFrames], [1, 0], clamp)
-    : 0;
-  // Entrance animations for intro text (relative to video start)
-  const introTextIn  = interpolate(frame, [0, Math.round(fps * 0.5)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const introTitleY  = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [48, 0], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const introTitleIn = interpolate(frame, [Math.round(fps * 0.1), Math.round(fps * 0.65)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-  const introVideoIn = interpolate(frame, [Math.round(fps * 0.2), Math.round(fps * 0.8)], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) });
-
-  const introVideoSrc = config.introVideoDataUrl ?? '/intro-video.mp4';
-
-  // Background music: uploaded file takes priority over preset
+  // Background music
   const bgMusicUrl = useMemo(
     () => config.bgMusicDataUrl
       ?? (config.bgMusicPreset ? getMusicPreset(config.bgMusicPreset as MusicPresetKey) : null),
@@ -301,7 +296,23 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   );
 
   return (
-    <AbsoluteFill style={bg.css}>
+    <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
+      {/* Background image */}
+      {config.backgroundImageDataUrl && (
+        <>
+          <AbsoluteFill style={{
+            backgroundImage: `url(${config.backgroundImageDataUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }} />
+          {config.backgroundImageOverlay > 0 && (
+            <AbsoluteFill style={{
+              backgroundColor: `rgba(0,0,0,${config.backgroundImageOverlay})`,
+            }} />
+          )}
+        </>
+      )}
+
       {/* Voiceover */}
       {config.audioDataUrl && (
         <Audio
@@ -318,7 +329,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         />
       )}
 
-      {/* Background music preset — loops throughout the video */}
+      {/* Background music */}
       {bgMusicUrl && (
         <Audio
           src={bgMusicUrl}
@@ -339,13 +350,13 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       {/* Sound effects */}
       {config.sfxEnabled && (
         <>
-          {/* Intro pop — one-shot at frame 0 */}
+          {/* Mouse click at video start */}
           <Sequence from={0}>
-            <Audio src={SFX_INTRO_WHOOSH} volume={config.sfxVolume * 0.75} />
+            <Audio src={SFX_START_CLICK} volume={config.sfxVolume * 0.75} />
           </Sequence>
 
-          {/* Typing click — loops while characters are being typed */}
-          {frame >= startTypingFrame && isTyping && (
+          {/* Typing click — code */}
+          {frame >= startTypingFrame && isTypingCode && (
             <Audio
               src={SFX_TYPE_CLICK}
               volume={config.sfxVolume * 0.55}
@@ -354,28 +365,33 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             />
           )}
 
-          {/* Zoom-in click — one-shot at scan start */}
+          {/* Zoom-in */}
           {config.scanEnabled && (
             <Sequence from={scanStartFrame}>
               <Audio src={SFX_ZOOM_IN} volume={config.sfxVolume * 0.75} />
             </Sequence>
           )}
 
-          {/* Zoom-out click — one-shot when camera pulls back */}
+          {/* Zoom-out */}
           {config.scanEnabled && (
             <Sequence from={zoomOutStartFrame}>
               <Audio src={SFX_ZOOM_OUT} volume={config.sfxVolume * 0.75} />
             </Sequence>
           )}
+
+          {/* Typing click — outro */}
+          {isTypingOutro && (
+            <Audio
+              src={SFX_TYPE_CLICK}
+              volume={config.sfxVolume * 0.55}
+              // @ts-expect-error loop is valid but not yet in Remotion's types
+              loop
+            />
+          )}
         </>
       )}
 
-      {/*
-        Zoom wrapper.
-        transformOrigin '0% 50%' anchors to the LEFT edge, horizontally centred,
-        so the camera opens from the left (where code text starts).
-        transform order: scale → translateX → translateY (right-to-left application)
-      */}
+      {/* Zoom wrapper */}
       <div
         style={{
           position: "absolute",
@@ -408,7 +424,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         </div>
 
-        {/* Title — fades out at 1.5 s */}
+        {/* Title — fades out at 1.5s */}
         {config.showTitle && config.title.trim() && (
           <div style={{
             position: "absolute",
@@ -562,7 +578,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                         {t.text}
                       </span>
                     ))}
-                    {isTyping && lineIdx === renderedLines.length - 1 && config.showCursor && (
+                    {isTypingCode && lineIdx === renderedLines.length - 1 && config.showCursor && (
                       <span style={{
                         display: "inline-block",
                         width: 2,
@@ -576,11 +592,47 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                   </span>
                 </div>
               ))}
+
+              {/* Outro / CTA line */}
+              {outroVisible.length > 0 && (
+                <div style={{
+                  display: "flex",
+                  minHeight: lineHeight,
+                }}>
+                  {config.showLineNumbers && (
+                    <span style={{
+                      color: theme.lineNumber,
+                      width: `${String(totalLines).length + 1}ch`,
+                      textAlign: "right",
+                      paddingRight: 24,
+                      userSelect: "none",
+                      flexShrink: 0,
+                    }}>
+                      {totalLines + 1}
+                    </span>
+                  )}
+                  <span style={{ flex: 1, color: theme.comment }}>
+                    {outroVisible}
+                    {isTypingOutro && config.showCursor && (
+                      <span style={{
+                        display: "inline-block",
+                        width: 2,
+                        height: config.fontSize * 1.1,
+                        background: theme.cursor,
+                        verticalAlign: "middle",
+                        marginLeft: 1,
+                        opacity: cursorVisible ? 1 : 0,
+                      }} />
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
-      {/* Subtle CRT scanline texture for Y2K/cybercore feel */}
+
+      {/* Subtle CRT scanline texture */}
       <div
         style={{
           position: 'absolute',
@@ -591,114 +643,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           backgroundSize: '100% 3px',
         }}
       />
-
-      {/* ── Intro overlay ── shows for introDuration seconds before typing starts */}
-      {config.introEnabled && (
-        <AbsoluteFill
-          style={{
-            backgroundColor: '#ffffff',
-            zIndex: 50,
-            opacity: introOverlayOpacity,
-          }}
-        >
-          {/* Top section: brand + subtitle + title (~42% height) */}
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '42%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 20,
-            paddingLeft: 80,
-            paddingRight: 80,
-          }}>
-            {/* Brand handle */}
-            <div style={{
-              position: 'absolute',
-              top: 72,
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 26,
-              fontWeight: 400,
-              color: 'rgba(0, 0, 180, 0.5)',
-              letterSpacing: '0.08em',
-              opacity: introTextIn,
-            }}>
-              {config.brandHandle}
-            </div>
-
-            {/* Subtitle */}
-            {config.introSubtitle.trim() && (
-              <div style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 30,
-                fontWeight: 400,
-                color: 'rgba(0, 0, 180, 0.6)',
-                letterSpacing: '0.18em',
-                textTransform: 'uppercase' as const,
-                opacity: introTextIn,
-              }}>
-                {config.introSubtitle}
-              </div>
-            )}
-
-            {/* Main title — Y2K style */}
-            <div style={{
-              fontFamily: "'Archivo Black', 'Arial Black', sans-serif",
-              fontSize: 88,
-              fontWeight: 900,
-              color: '#0a0a0a',
-              textAlign: 'center' as const,
-              lineHeight: 1.05,
-              letterSpacing: '0.01em',
-              textTransform: 'uppercase' as const,
-              textShadow: '2px 2px 0 rgba(0,0,180,0.12), -1px -1px 0 rgba(0,0,0,0.08)',
-              opacity: introTitleIn,
-              transform: `translateY(${introTitleY}px)`,
-            }}>
-              {config.title || config.filename}
-            </div>
-          </div>
-
-          {/* Y2K accent line separating text from video */}
-          <div style={{
-            position: 'absolute',
-            top: 'calc(42% - 2px)',
-            left: 0,
-            right: 0,
-            height: 4,
-            background: 'linear-gradient(90deg, transparent 0%, #0044cc 15%, #0088ff 50%, #0044cc 85%, transparent 100%)',
-            zIndex: 2,
-          }} />
-
-          {/* Bottom section: intro video (~58% height) */}
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '58%',
-            overflow: 'hidden',
-            opacity: introVideoIn,
-          }}>
-            <Video
-              src={introVideoSrc}
-              // @ts-expect-error muted is valid
-              muted
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover' as const,
-                objectPosition: 'center',
-                display: 'block',
-              }}
-            />
-          </div>
-        </AbsoluteFill>
-      )}
     </AbsoluteFill>
   );
 };

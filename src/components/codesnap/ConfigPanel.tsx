@@ -18,7 +18,7 @@ import type {
   Theme,
 } from "@/lib/codesnap-types";
 import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
-import { Clapperboard, Film, Mic, Music, Upload, X } from "lucide-react";
+import { Image, Mic, Music, Upload, X } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
 
@@ -81,7 +81,7 @@ const DIRECTIONS: { value: GradientDirection; label: string }[] = [
 export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
-  const introVideoInputRef = useRef<HTMLInputElement>(null);
+  const bgImageInputRef = useRef<HTMLInputElement>(null);
 
   const loadAudioFile = (file: File, onLoad: (dataUrl: string) => void) => {
     if (file.size > 30 * 1024 * 1024) {
@@ -105,15 +105,15 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
       toast.success("Music loaded", { description: file.name });
     });
 
-  const handleIntroVideoFile = (file: File) => {
-    if (file.size > 100 * 1024 * 1024) {
-      toast.error("Video too large", { description: "Maximum 100MB." });
+  const handleBgImageFile = (file: File) => {
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("Image too large", { description: "Maximum 15MB." });
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      onChange({ introVideoDataUrl: reader.result as string, introVideoName: file.name });
-      toast.success("Intro video loaded", { description: file.name });
+      onChange({ backgroundImageDataUrl: reader.result as string, backgroundImageName: file.name });
+      toast.success("Background image loaded", { description: file.name });
     };
     reader.readAsDataURL(file);
   };
@@ -220,7 +220,67 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
 
       {/* BACKGROUND */}
       <TabsContent value="background" className="space-y-5 pt-5">
-        <Field label="Background style">
+
+        {/* Background image upload */}
+        <div className="brutal-border bg-concrete p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
+              <Image className="h-3 w-3" /> Background image
+            </Label>
+            {config.backgroundImageName && (
+              <button
+                onClick={() => onChange({ backgroundImageDataUrl: null, backgroundImageName: null })}
+                className="font-mono text-[10px] tracking-wide flex items-center gap-1 hover:text-ember"
+              >
+                <X className="h-3 w-3" /> Remove
+              </button>
+            )}
+          </div>
+          <input
+            ref={bgImageInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleBgImageFile(f);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => bgImageInputRef.current?.click()}
+            className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            {config.backgroundImageName ?? "Upload image (JPG/PNG/WEBP)"}
+          </button>
+          {config.backgroundImageDataUrl && (
+            <>
+              <div
+                className="h-20 brutal-border"
+                style={{
+                  backgroundImage: `url(${config.backgroundImageDataUrl})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                }}
+              />
+              <Field label={`Dark overlay · ${Math.round(config.backgroundImageOverlay * 100)}%`}>
+                <Slider
+                  value={[config.backgroundImageOverlay]}
+                  min={0} max={0.85} step={0.05}
+                  onValueChange={([v]) => onChange({ backgroundImageOverlay: v })}
+                />
+              </Field>
+            </>
+          )}
+          {!config.backgroundImageDataUrl && (
+            <p className="text-[10px] font-mono text-muted-foreground">
+              Replaces the gradient/preset background. JPG, PNG or WEBP — max 15 MB.
+            </p>
+          )}
+        </div>
+
+        <Field label="Background style (when no image)">
           <Select
             value={config.background}
             onValueChange={(v) => onChange({ background: v as BackgroundStyle })}
@@ -335,74 +395,25 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           </Field>
         )}
 
-        {/* Intro card */}
+        {/* Outro / CTA */}
         <div className="brutal-border bg-concrete p-4 space-y-4">
-          <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
-            <Clapperboard className="h-3 w-3" /> Intro card
-          </Label>
           <ToggleRow
-            label="Show intro before typing"
-            checked={config.introEnabled}
-            onChange={(v) => onChange({ introEnabled: v })}
+            label="Outro / CTA after scan"
+            checked={config.outroEnabled}
+            onChange={(v) => onChange({ outroEnabled: v })}
           />
-          {config.introEnabled && (
-            <>
-              <Field label="Subtitle (above title)">
-                <Input
-                  value={config.introSubtitle}
-                  onChange={(e) => onChange({ introSubtitle: e.target.value })}
-                  className="font-mono brutal-border rounded-none"
-                  placeholder="e.g. Tutorial 1"
-                />
-              </Field>
-              <Field label={`Duration · ${config.introDuration.toFixed(1)}s`}>
-                <Slider
-                  value={[config.introDuration]}
-                  min={1} max={8} step={0.5}
-                  onValueChange={([v]) => onChange({ introDuration: v })}
-                />
-              </Field>
-
-              {/* Intro video upload */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
-                    <Film className="h-3 w-3" /> Animation video
-                  </Label>
-                  {config.introVideoName && (
-                    <button
-                      onClick={() => onChange({ introVideoDataUrl: null, introVideoName: null })}
-                      className="font-mono text-[10px] tracking-wide flex items-center gap-1 hover:text-ember"
-                    >
-                      <X className="h-3 w-3" /> Reset to default
-                    </button>
-                  )}
-                </div>
-                <input
-                  ref={introVideoInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleIntroVideoFile(f);
-                    e.target.value = "";
-                  }}
-                />
-                <button
-                  onClick={() => introVideoInputRef.current?.click()}
-                  className="w-full brutal-border bg-ink text-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember transition-colors"
-                >
-                  <Upload className="h-4 w-4" />
-                  {config.introVideoName ?? "Upload intro video (MP4)"}
-                </button>
-                {!config.introVideoName && (
-                  <p className="text-[10px] font-mono text-muted-foreground">
-                    Using default · upload your own MP4 to replace
-                  </p>
-                )}
-              </div>
-            </>
+          {config.outroEnabled && (
+            <Field label="CTA text (typed after zoom-out)">
+              <Input
+                value={config.outroText}
+                onChange={(e) => onChange({ outroText: e.target.value })}
+                className="font-mono brutal-border rounded-none"
+                placeholder='Escribe "code" para el repo'
+              />
+              <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                Appears as a comment line at the end of the code
+              </p>
+            </Field>
           )}
         </div>
 

@@ -1,5 +1,5 @@
 import { Player, PlayerRef } from "@remotion/player";
-import { useMemo, useRef, useState, useCallback } from "react";
+import React, { useMemo, useRef, useState, useCallback } from "react";
 import { CodeComposition } from "./CodeComposition";
 import {
   computeDurationFrames,
@@ -13,11 +13,19 @@ import { Play, RotateCcw, Pause } from "lucide-react";
 
 interface Props {
   config: SnippetConfig;
+  paused?: boolean;
 }
 
-export const PreviewPlayer: React.FC<Props> = ({ config }) => {
+export const PreviewPlayer: React.FC<Props> = ({ config, paused }) => {
   const playerRef = useRef<PlayerRef>(null);
   const [isPlaying, setIsPlaying] = useState(true);
+
+  React.useEffect(() => {
+    if (paused) {
+      playerRef.current?.pause();
+      setIsPlaying(false);
+    }
+  }, [paused]);
   const durationInFrames = useMemo(() => computeDurationFrames(config), [config]);
 
   const handlePlayPause = useCallback(() => {

@@ -79,9 +79,7 @@ export const ExportDialog: React.FC<Props> = ({
     onOpenChange(v);
   };
 
-  const isWorking =
-    progress.phase === "rendering-frames" ||
-    progress.phase === "encoding";
+  const isWorking = progress.phase === "rendering-frames";
 
   const pct =
     progress.total > 0
@@ -179,8 +177,7 @@ export const ExportDialog: React.FC<Props> = ({
                   )}
                   <span className="truncate">{progress.message}</span>
                 </div>
-                {(progress.phase === "rendering-frames" ||
-                  progress.phase === "encoding") && (
+                {progress.phase === "rendering-frames" && (
                   <Progress value={pct} className="h-2 brutal-border rounded-none" />
                 )}
               </div>

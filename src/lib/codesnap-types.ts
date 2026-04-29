@@ -75,12 +75,13 @@ export interface SnippetConfig {
   scanEnabled: boolean;
   scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
-  // intro card
-  introEnabled: boolean;
-  introSubtitle: string; // small label above title, e.g. "Tutorial 1"
-  introDuration: number; // seconds
-  introVideoDataUrl: string | null; // uploaded MP4 for intro animation
-  introVideoName: string | null;
+  // outro / CTA text typed after scan
+  outroEnabled: boolean;
+  outroText: string;
+  // background image
+  backgroundImageDataUrl: string | null;
+  backgroundImageName: string | null;
+  backgroundImageOverlay: number; // 0..1 — dark overlay opacity
   // sound effects
   sfxEnabled: boolean;
   sfxVolume: number; // 0..1 — master volume for all SFX
@@ -110,8 +111,8 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   code: DEFAULT_CODE,
   language: "python",
   filename: "quicksort.py",
-  theme: "chrome-y2k",
-  background: "chrome-flat",
+  theme: "paper-light",
+  background: "paper-noise",
   customGradient: {
     from: "#ff5722",
     to: "#1a1a1a",
@@ -121,27 +122,27 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   padding: 56,
   showLineNumbers: false,
   windowChrome: true,
-  typingSpeed: 28,
+  typingSpeed: 30,
   startDelay: 0.4,
-  holdEnd: 1.5,
+  holdEnd: 5,
   showCursor: true,
   title: "Quicksort in 7 lines",
   showTitle: true,
   brandHandle: "@ayrtonnacer",
   scanEnabled: true,
-  scanSpeed: 0.20,
-  scanZoom: 12,
-  introEnabled: true,
-  introSubtitle: "Tutorial 1",
-  introDuration: 3.5,
-  introVideoDataUrl: null,
-  introVideoName: null,
+  scanSpeed: 3.0,
+  scanZoom: 4.0,
+  outroEnabled: false,
+  outroText: "",
+  backgroundImageDataUrl: null,
+  backgroundImageName: null,
+  backgroundImageOverlay: 0.3,
   sfxEnabled: true,
-  sfxVolume: 0.7,
-  bgMusicPreset: null,
+  sfxVolume: 1.0,
+  bgMusicPreset: "midnight-buffering",
   bgMusicDataUrl: null,
   bgMusicName: null,
-  bgMusicVolume: 0.25,
+  bgMusicVolume: 0.8,
   bgMusicFadeOut: 2.0,
   audioDataUrl: null,
   audioName: null,
@@ -184,7 +185,6 @@ export function computeLinePanTimings(cfg: SnippetConfig): LinePanTiming[] {
 
 export function computeDurationFrames(cfg: SnippetConfig): number {
   const typingSeconds = cfg.code.length / Math.max(1, cfg.typingSpeed);
-  const introSec = cfg.introEnabled ? cfg.introDuration : 0;
 
   let scanSec = 0;
   if (cfg.scanEnabled) {
@@ -195,7 +195,11 @@ export function computeDurationFrames(cfg: SnippetConfig): number {
     scanSec = SCAN_PRE_PAUSE_FRAMES / FPS + scanFrames / FPS;
   }
 
-  const total = introSec + cfg.startDelay + typingSeconds + scanSec + cfg.holdEnd;
+  const outroSeconds = cfg.outroEnabled && cfg.outroText.length > 0
+    ? cfg.outroText.length / Math.max(1, cfg.typingSpeed)
+    : 0;
+
+  const total = cfg.startDelay + typingSeconds + scanSec + outroSeconds + cfg.holdEnd;
   return Math.max(FPS, Math.round(total * FPS));
 }
 
@@ -205,23 +209,31 @@ export function computeVideoTimings(cfg: SnippetConfig): {
   typingEndSec: number;
   zoomInStartSec: number;
   zoomOutStartSec: number;
+  outroStartSec: number;
+  outroEndSec: number;
 } {
-  const introSec = cfg.introEnabled ? cfg.introDuration : 0;
-  const typingStartSec = introSec + cfg.startDelay;
+  const typingStartSec = cfg.startDelay;
   const typingEndSec   = typingStartSec + cfg.code.length / Math.max(1, cfg.typingSpeed);
 
-  if (!cfg.scanEnabled) {
-    return { typingStartSec, typingEndSec, zoomInStartSec: Infinity, zoomOutStartSec: Infinity };
+  let zoomInStartSec  = Infinity;
+  let zoomOutStartSec = Infinity;
+  let outroStartSec   = typingEndSec;
+
+  if (cfg.scanEnabled) {
+    const panTimings = computeLinePanTimings(cfg);
+    const panFrames  = panTimings.reduce((sum, t) => sum + t.readFrames, 0)
+      + SCAN_SNAP_FRAMES * (panTimings.length - 1);
+
+    zoomInStartSec  = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS;
+    zoomOutStartSec = zoomInStartSec + SCAN_ZOOM_FRAMES / FPS + panFrames / FPS;
+    outroStartSec   = zoomOutStartSec + SCAN_ZOOM_FRAMES / FPS;
   }
 
-  const panTimings  = computeLinePanTimings(cfg);
-  const panFrames   = panTimings.reduce((sum, t) => sum + t.readFrames, 0)
-    + SCAN_SNAP_FRAMES * (panTimings.length - 1);
+  const outroEndSec = cfg.outroEnabled && cfg.outroText.length > 0
+    ? outroStartSec + cfg.outroText.length / Math.max(1, cfg.typingSpeed)
+    : Infinity;
 
-  const zoomInStartSec  = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS;
-  const zoomOutStartSec = zoomInStartSec + SCAN_ZOOM_FRAMES / FPS + panFrames / FPS;
-
-  return { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec };
+  return { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec, outroStartSec, outroEndSec };
 }
 
 export function buildBackgroundCss(

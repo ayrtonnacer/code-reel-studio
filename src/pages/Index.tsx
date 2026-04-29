@@ -67,7 +67,7 @@ const Index = () => {
               9:16
             </span>
           </div>
-          <PreviewPlayer config={config} />
+          <PreviewPlayer config={config} paused={exportOpen} />
           <Button
             className="w-full brutal-border brutal-shadow bg-white text-black hover:bg-white/90 font-mono rounded-none"
             onClick={() => setExportOpen(true)}

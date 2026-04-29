@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { toPng } from "html-to-image";
+import { toCanvas } from "html-to-image";
 import {
   computeDurationFrames,
   computeVideoTimings,
@@ -8,14 +8,13 @@ import {
   VIDEO_WIDTH,
   type SnippetConfig,
 } from "@/lib/codesnap-types";
-import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_INTRO_WHOOSH, type MusicPresetKey } from "@/lib/codesnap-sfx";
+import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
 
 export type ExportFormat = "webm" | "mp4";
 
 export type ExportPhase =
   | "idle"
   | "rendering-frames"
-  | "encoding"
   | "done"
   | "error";
 
@@ -34,38 +33,16 @@ export function isMp4Supported(): boolean {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-async function renderFrames(
-  totalFrames: number,
-  getFrameElement: () => HTMLElement | null,
-  setFrame: (frame: number) => Promise<void>,
-  onProgress: (current: number, message: string) => void
-): Promise<Blob[]> {
-  const frameBlobs: Blob[] = [];
-  for (let i = 0; i < totalFrames; i++) {
-    await setFrame(i);
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
+const HTML_TO_IMAGE_OPTS = {
+  cacheBust: false,
+  pixelRatio: 1,
+  width: VIDEO_WIDTH,
+  height: VIDEO_HEIGHT,
+  skipFonts: true,
+} as const;
 
-    const el = getFrameElement();
-    if (!el) throw new Error("Frame element not mounted");
-
-    const dataUrl = await toPng(el, {
-      cacheBust: false,
-      pixelRatio: 1,
-      width: VIDEO_WIDTH,
-      height: VIDEO_HEIGHT,
-      skipFonts: true,
-    });
-
-    const blob = await (await fetch(dataUrl)).blob();
-    frameBlobs.push(blob);
-
-    if (i % 3 === 0 || i === totalFrames - 1) {
-      onProgress(i + 1, `Rendering frame ${i + 1} / ${totalFrames}`);
-      await new Promise((r) => setTimeout(r, 0));
-    }
-  }
-  return frameBlobs;
+async function captureFrame(el: HTMLElement): Promise<HTMLCanvasElement> {
+  return toCanvas(el, HTML_TO_IMAGE_OPTS);
 }
 
 interface AudioSource {
@@ -201,12 +178,12 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
   // Sound effects
   if (config.sfxEnabled) {
     const sfxVol = config.sfxVolume ?? 1;
-    const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec } = computeVideoTimings(config);
+    const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec, outroStartSec, outroEndSec } = computeVideoTimings(config);
 
-    // Intro pop at t=0
-    sources.push({ dataUrl: SFX_INTRO_WHOOSH, volume: 0.75 * sfxVol, fadeOut: 0, startTime: 0 });
+    // Mouse click at video start
+    sources.push({ dataUrl: SFX_START_CLICK, volume: 0.75 * sfxVol, fadeOut: 0, startTime: 0 });
 
-    // Typing click loop
+    // Typing click loop — code
     sources.push({
       dataUrl: SFX_TYPE_CLICK,
       volume: 0.55 * sfxVol,
@@ -225,17 +202,49 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
     if (isFinite(zoomOutStartSec)) {
       sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomOutStartSec });
     }
+
+    // Typing click loop — outro CTA
+    if (isFinite(outroStartSec) && isFinite(outroEndSec)) {
+      sources.push({
+        dataUrl: SFX_TYPE_CLICK,
+        volume: 0.55 * sfxVol,
+        fadeOut: 0,
+        startTime: outroStartSec,
+        endTime: outroEndSec,
+        loop: true,
+      });
+    }
   }
 
   return sources;
 }
 
-// ─── encoders ────────────────────────────────────────────────────────────────
+// ─── encoders (streaming: render + encode each frame immediately) ─────────────
+
+type FrameRenderFn = (
+  getEl: () => HTMLElement | null,
+  setFrame: (f: number) => Promise<void>,
+  i: number
+) => Promise<HTMLCanvasElement>;
+
+async function renderFrameCanvas(
+  getEl: () => HTMLElement | null,
+  setFrame: (f: number) => Promise<void>,
+  i: number
+): Promise<HTMLCanvasElement> {
+  await setFrame(i);
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const el = getEl();
+  if (!el) throw new Error("Frame element not mounted");
+  return captureFrame(el);
+}
 
 async function encodeWebm(
-  frameBlobs: Blob[],
-  config: SnippetConfig,
   totalFrames: number,
+  getFrameElement: () => HTMLElement | null,
+  setFrame: (frame: number) => Promise<void>,
+  config: SnippetConfig,
   onProgress: (current: number, message: string) => void
 ): Promise<Blob> {
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
@@ -273,14 +282,13 @@ async function encodeWebm(
   recorder.start();
 
   const frameDuration = 1000 / FPS;
-  for (let i = 0; i < frameBlobs.length; i++) {
-    const bitmap = await createImageBitmap(frameBlobs[i]);
-    ctx.drawImage(bitmap, 0, 0);
-    bitmap.close();
+  for (let i = 0; i < totalFrames; i++) {
+    const frameCanvas = await renderFrameCanvas(getFrameElement, setFrame, i);
+    ctx.drawImage(frameCanvas, 0, 0);
     await new Promise((r) => setTimeout(r, frameDuration));
 
-    if (i % 5 === 0 || i === frameBlobs.length - 1) {
-      onProgress(i + 1, `Encoding frame ${i + 1} / ${totalFrames}`);
+    if (i % 5 === 0 || i === totalFrames - 1) {
+      onProgress(i + 1, `Rendering + encoding frame ${i + 1} / ${totalFrames}`);
     }
   }
 
@@ -292,9 +300,10 @@ async function encodeWebm(
 }
 
 async function encodeMp4(
-  frameBlobs: Blob[],
-  config: SnippetConfig,
   totalFrames: number,
+  getFrameElement: () => HTMLElement | null,
+  setFrame: (frame: number) => Promise<void>,
+  config: SnippetConfig,
   onProgress: (current: number, message: string) => void
 ): Promise<Blob> {
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
@@ -326,15 +335,14 @@ async function encodeMp4(
   });
 
   const frameDurationUs = Math.round(1_000_000 / FPS);
-  for (let i = 0; i < frameBlobs.length; i++) {
-    const bitmap = await createImageBitmap(frameBlobs[i]);
-    const frame = new VideoFrame(bitmap, { timestamp: i * frameDurationUs, duration: frameDurationUs });
-    bitmap.close();
-    videoEncoder.encode(frame, { keyFrame: i % 30 === 0 });
-    frame.close();
+  for (let i = 0; i < totalFrames; i++) {
+    const frameCanvas = await renderFrameCanvas(getFrameElement, setFrame, i);
+    const vf = new VideoFrame(frameCanvas, { timestamp: i * frameDurationUs, duration: frameDurationUs });
+    videoEncoder.encode(vf, { keyFrame: i % 30 === 0 });
+    vf.close();
 
-    if (i % 5 === 0 || i === frameBlobs.length - 1) {
-      onProgress(i + 1, `Encoding frame ${i + 1} / ${totalFrames}`);
+    if (i % 5 === 0 || i === totalFrames - 1) {
+      onProgress(i + 1, `Rendering + encoding frame ${i + 1} / ${totalFrames}`);
     }
     await new Promise((r) => setTimeout(r, 0));
   }
@@ -402,19 +410,12 @@ export function useVideoExport() {
       try {
         const totalFrames = computeDurationFrames(config);
 
-        setProgress({ phase: "rendering-frames", current: 0, total: totalFrames, message: "Rendering frames...", blobUrl: null, fileExt: ext });
-
-        const frameBlobs = await renderFrames(
-          totalFrames, getFrameElement, setFrame,
-          (current, message) => setProgress((p) => ({ ...p, current, message }))
-        );
-
-        setProgress({ phase: "encoding", current: 0, total: totalFrames, message: `Encoding ${format.toUpperCase()}...`, blobUrl: null, fileExt: ext });
+        setProgress({ phase: "rendering-frames", current: 0, total: totalFrames, message: "Rendering...", blobUrl: null, fileExt: ext });
 
         const blob =
           format === "mp4"
-            ? await encodeMp4(frameBlobs, config, totalFrames, (current, message) => setProgress((p) => ({ ...p, current, message })))
-            : await encodeWebm(frameBlobs, config, totalFrames, (current, message) => setProgress((p) => ({ ...p, current, message })));
+            ? await encodeMp4(totalFrames, getFrameElement, setFrame, config, (current, message) => setProgress((p) => ({ ...p, current, message })))
+            : await encodeWebm(totalFrames, getFrameElement, setFrame, config, (current, message) => setProgress((p) => ({ ...p, current, message })));
 
         const blobUrl = URL.createObjectURL(blob);
         setProgress({ phase: "done", current: totalFrames, total: totalFrames, message: "Done!", blobUrl, fileExt: ext });

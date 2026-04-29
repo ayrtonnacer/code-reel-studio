@@ -24,21 +24,20 @@ function buildWAV(samples: Float32Array, sr = SR): string {
 // ─── Sound Effects ────────────────────────────────────────────────────────────
 
 // Real keyboard typing sound — served from public/sounds/
-export const SFX_TYPE_CLICK    = '/sounds/typing-keyboard.mp3';
+export const SFX_TYPE_CLICK  = '/sounds/typing-keyboard.mp3';
 
-// Mouse click for zoom-in and zoom-out (same sound)
-export const SFX_ZOOM_IN       = '/sounds/zoom-click.mp3';
-export const SFX_ZOOM_OUT      = '/sounds/zoom-click.mp3';
-
-// Whoosh played at the very start of the video
-export const SFX_INTRO_WHOOSH  = '/sounds/intro-whoosh.mp3';
+// Mouse click for zoom-in, zoom-out, and video start
+export const SFX_ZOOM_IN     = '/sounds/zoom-click.mp3';
+export const SFX_ZOOM_OUT    = '/sounds/zoom-click.mp3';
+export const SFX_START_CLICK = '/sounds/mouse-click.mp3';
 
 // ─── Music Presets ────────────────────────────────────────────────────────────
 
 export const MUSIC_PRESETS = [
-  { key: 'vaporwave', label: 'Neon Drift',  description: 'Dreamy pads · 80 BPM'   },
-  { key: 'chiptune',  label: 'Pixel Rush',  description: 'Retro 8-bit · 140 BPM'  },
-  { key: 'lofi',      label: 'Chill Code',  description: 'Lo-fi chill · 85 BPM'   },
+  { key: 'midnight-buffering', label: 'Midnight Buffering', description: 'Default track'       },
+  { key: 'vaporwave',          label: 'Neon Drift',         description: 'Dreamy pads · 80 BPM' },
+  { key: 'chiptune',           label: 'Pixel Rush',         description: 'Retro 8-bit · 140 BPM'},
+  { key: 'lofi',               label: 'Chill Code',         description: 'Lo-fi chill · 85 BPM' },
 ] as const;
 
 export type MusicPresetKey = typeof MUSIC_PRESETS[number]['key'];
@@ -46,6 +45,7 @@ export type MusicPresetKey = typeof MUSIC_PRESETS[number]['key'];
 const _musicCache = new Map<MusicPresetKey, string>();
 
 export function getMusicPreset(key: MusicPresetKey): string {
+  if (key === 'midnight-buffering') return '/music/midnight-buffering.mp3';
   if (_musicCache.has(key)) return _musicCache.get(key)!;
   const url = key === 'vaporwave' ? genVaporwave()
             : key === 'chiptune'  ? genChiptune()
