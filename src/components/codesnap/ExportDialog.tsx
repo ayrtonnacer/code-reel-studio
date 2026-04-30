@@ -45,7 +45,7 @@ export const ExportDialog: React.FC<Props> = ({
   const setFrame = useCallback((frame: number) => {
     return new Promise<void>((resolve) => {
       flushSync(() => setRenderFrame(frame));
-      requestAnimationFrame(resolve);
+      requestAnimationFrame(() => resolve());
     });
   }, []);
 

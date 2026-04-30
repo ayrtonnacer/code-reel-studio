@@ -195,6 +195,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const zoomInEndFrame = scanStartFrame + SCAN_ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
+  // The X position where the camera lands after zoom-in and from which every
+  // line's rightward pan starts. A bit more left than Tx_left so the code
+  // start is fully visible on entry.
+  const panStartX = Tx_left - charWidth * 3;
+
   const isAct1 = frame < scanStartFrame;
 
   // ── Pan timings (indexed by fullCode line index) ──────────────────────────
@@ -216,13 +221,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       const targetTx = Math.min(idealTx, Tx_left);
       const scrollDist = Math.abs(Tx_left - targetTx);
 
+      // Calculate how far left the camera must go to show the full comment text
+      const commentText = narrativeInfo.narrativeMap.get(fullIdx);
+      let commentTargetTx = targetTx;
+      if (commentText) {
+        const commentPrefix = getCommentLinePrefix(config.language);
+        const commentLen = commentPrefix.length + commentText.length;
+        const commentContentEnd = xCodeLeft + lineNumWidth + commentLen * charWidth;
+        const idealCommentTx = visibleWidth - commentContentEnd;
+        commentTargetTx = Math.min(idealCommentTx, Tx_left);
+      }
+
       const scroll = Math.max(0, visualIdx - maxVisibleLines + 3) * lineHeight;
       const absY   = codeAreaTop + visualIdx * lineHeight - scroll;
       const Ty     = height / 2 - absY;
 
-      return { fullIdx, targetTx, scrollDist, Ty, scroll: -scroll };
+      return { fullIdx, targetTx, commentTargetTx, scrollDist, Ty, scroll: -scroll };
     });
-  }, [nonNarrativeCodeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
+  }, [nonNarrativeCodeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height, narrativeInfo, config.language]);
 
   // ── lineSchedules — one entry per non-narrative line ─────────────────────
   const { lineSchedules, dynamicScanFrames } = useMemo(() => {
@@ -278,7 +294,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     const m0 = lineMetrics[0] ?? { Ty: 0, scroll: 0 };
     sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], easeOut);
     sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], easeOut);
-    sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], easeOut);
+    sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, panStartX], easeOut);
     effectiveScrollY = 0;
 
   } else if (frame < panEndFrame) {
@@ -295,18 +311,28 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       const inLineFrame = scanFrame - sched.start;
 
       if (scanFrame < sched.arriveEnd) {
-        // Panning to this line
+        // Panning to this line (starts from panStartX, sweeps right to targetTx)
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
         sceneTranslateX  = interpolate(
           inLineFrame, [0, Math.max(1, sched.arriveEnd - sched.start)],
-          [Tx_left, curr.targetTx], easeOut
+          [panStartX, curr.targetTx], easeOut
         );
-      } else if (scanFrame < sched.holdEnd) {
-        // At line — typing comment + hold, camera locked
+      } else if (scanFrame < sched.commentEnd) {
+        // Typing the comment — pan from code targetTx toward commentTargetTx
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
-        sceneTranslateX  = curr.targetTx;
+        const commentFrame = scanFrame - sched.arriveEnd;
+        const commentDuration = Math.max(1, sched.commentEnd - sched.arriveEnd);
+        sceneTranslateX  = interpolate(
+          commentFrame, [0, commentDuration],
+          [curr.targetTx, curr.commentTargetTx], easeOut
+        );
+      } else if (scanFrame < sched.holdEnd) {
+        // Comment done — hold with camera at commentTargetTx
+        effectiveScrollY = curr.scroll;
+        sceneTranslateY  = curr.Ty;
+        sceneTranslateX  = curr.commentTargetTx;
       } else {
         // Snapping to next line
         const next      = lineMetrics[ci + 1] ?? curr;
@@ -317,9 +343,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           config: { damping: 40, stiffness: 200 },
           durationInFrames: SCAN_SNAP_FRAMES,
         });
-        effectiveScrollY = curr.scroll   + (next.scroll   - curr.scroll)   * snapProg;
-        sceneTranslateY  = curr.Ty       + (next.Ty       - curr.Ty)       * snapProg;
-        sceneTranslateX  = curr.targetTx + (Tx_left       - curr.targetTx) * snapProg;
+        effectiveScrollY = curr.scroll        + (next.scroll   - curr.scroll)   * snapProg;
+        sceneTranslateY  = curr.Ty            + (next.Ty       - curr.Ty)       * snapProg;
+        sceneTranslateX  = curr.commentTargetTx + (panStartX   - curr.commentTargetTx) * snapProg;
       }
     }
 
@@ -460,7 +486,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       {bgMusicUrl && (
         <Audio
           src={bgMusicUrl}
-          // @ts-expect-error loop is valid but not yet in Remotion's types
           loop
           volume={(f) => {
             if (config.bgMusicFadeOut <= 0) return config.bgMusicVolume;
@@ -486,7 +511,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             <Audio
               src={SFX_TYPE_CLICK}
               volume={config.sfxVolume * 0.55}
-              // @ts-expect-error loop is valid
               loop
             />
           )}
@@ -496,7 +520,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             <Audio
               src={SFX_TYPE_CLICK}
               volume={config.sfxVolume * 0.50}
-              // @ts-expect-error loop is valid
               loop
             />
           )}
@@ -520,7 +543,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             <Audio
               src={SFX_TYPE_CLICK}
               volume={config.sfxVolume * 0.55}
-              // @ts-expect-error loop is valid
               loop
             />
           )}
