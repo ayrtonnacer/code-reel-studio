@@ -75,6 +75,8 @@ export interface SnippetConfig {
   scanEnabled: boolean;
   scanSpeed: number; // lines per second (e.g. 0.6 = ~1.7s per line)
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
+  // narrative comments style during scan
+  commentStyle: "inline" | "subtitle";
   // outro / CTA text typed after scan
   outroEnabled: boolean;
   outroText: string;
@@ -98,12 +100,25 @@ export interface SnippetConfig {
   audioFadeOut: number; // seconds
 }
 
-export const DEFAULT_CODE = `def quicksort(arr):
-  if len(arr) <= 1: return arr
+export const DEFAULT_CODE = `# Función de ordenamiento rápido que devuelve una lista ordenada
+def quicksort(arr):
+  # Caso base: listas de 0 o 1 elemento ya están ordenadas
+  if len(arr) <= 1:
+    return arr
+
+  # Elegimos el elemento del medio como pivote
   pivot = arr[len(arr) // 2]
+
+  # Elementos menores al pivote
   left = [x for x in arr if x < pivot]
+
+  # Elementos iguales al pivote
   middle = [x for x in arr if x == pivot]
+
+  # Elementos mayores al pivote
   right = [x for x in arr if x > pivot]
+
+  # Llamada recursiva y concatenación de los tres grupos
   return quicksort(left) + middle + quicksort(right)
 `;
 
@@ -126,12 +141,13 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   startDelay: 0.4,
   holdEnd: 5,
   showCursor: true,
-  title: "Quicksort in 7 lines",
+  title: "Quicksort en Python",
   showTitle: true,
   brandHandle: "@ayrtonnacer",
   scanEnabled: true,
   scanSpeed: 3.0,
   scanZoom: 4.0,
+  commentStyle: "inline",
   outroEnabled: false,
   outroText: "",
   backgroundImageDataUrl: null,
@@ -158,13 +174,28 @@ export const SCAN_ZOOM_FRAMES     = Math.round(FPS * 0.45);
 export const SCAN_SNAP_FRAMES     = Math.round(FPS * 0.25);
 export const SCAN_BASE_READ_FRAMES = Math.round(FPS * 0.3);
 export const SCAN_PRE_PAUSE_FRAMES = Math.round(FPS * 0.35);
+// Hold after a narrative comment finishes typing before snapping to next line
+export const SCAN_COMMENT_HOLD_FRAMES = Math.round(FPS * 0.7);
 
 export interface LinePanTiming {
   scrollDist: number;
   readFrames: number;
+  commentText?: string;
+  commentTypingFrames: number;
+  commentHoldFrames: number;
 }
 
-export function computeLinePanTimings(cfg: SnippetConfig): LinePanTiming[] {
+export interface NarrativeOpts {
+  act1CodeLength: number;
+  narrativeMap: Map<number, string>;
+  narrativeLineIndices: Set<number>;
+}
+
+export function computeLinePanTimings(
+  cfg: SnippetConfig,
+  narrativeMap?: Map<number, string>,
+  narrativeLineIndices?: Set<number>
+): LinePanTiming[] {
   const charWidth      = cfg.fontSize * 0.6;
   const visibleWidth   = VIDEO_WIDTH / Math.max(1, cfg.scanZoom);
   const xCodeLeft      = cfg.padding * 2;
@@ -173,25 +204,48 @@ export function computeLinePanTimings(cfg: SnippetConfig): LinePanTiming[] {
   const lineNumWidth   = cfg.showLineNumbers
     ? (String(lines.length).length + 1) * charWidth + 24
     : 0;
-  return lines.map(line => {
+
+  return lines.map((line, idx) => {
+    // Narrative comment lines are skipped by the scanner
+    if (narrativeLineIndices?.has(idx)) {
+      return { scrollDist: 0, readFrames: 0, commentTypingFrames: 0, commentHoldFrames: 0 };
+    }
+
     const lineContentEnd = xCodeLeft + lineNumWidth + line.trimEnd().length * charWidth;
     const idealTx    = visibleWidth - lineContentEnd;
     const targetTx   = Math.min(idealTx, -xCodeLeft);
     const scrollDist = Math.abs(-xCodeLeft - targetTx);
     const readFrames = SCAN_BASE_READ_FRAMES + Math.round(scrollDist / pixelsPerFrame);
-    return { scrollDist, readFrames };
+
+    const commentText = narrativeMap?.get(idx);
+    const commentTypingFrames = commentText
+      ? Math.ceil(commentText.length / Math.max(1, cfg.typingSpeed) * FPS)
+      : 0;
+    const commentHoldFrames = commentText ? SCAN_COMMENT_HOLD_FRAMES : 0;
+
+    return { scrollDist, readFrames, commentText, commentTypingFrames, commentHoldFrames };
   });
 }
 
-export function computeDurationFrames(cfg: SnippetConfig): number {
-  const typingSeconds = cfg.code.length / Math.max(1, cfg.typingSpeed);
+export function computeDurationFrames(cfg: SnippetConfig, narrativeOpts?: NarrativeOpts): number {
+  const typingCodeLength = narrativeOpts?.act1CodeLength ?? cfg.code.length;
+  const typingSeconds = typingCodeLength / Math.max(1, cfg.typingSpeed);
 
   let scanSec = 0;
   if (cfg.scanEnabled) {
-    const panTimings = computeLinePanTimings(cfg);
+    const panTimings = computeLinePanTimings(
+      cfg,
+      narrativeOpts?.narrativeMap,
+      narrativeOpts?.narrativeLineIndices
+    );
+    // Count only non-narrative lines for snap gaps
+    const nonNarrativeCount = narrativeOpts
+      ? panTimings.filter(t => t.readFrames > 0).length
+      : panTimings.length;
+
     const scanFrames = SCAN_ZOOM_FRAMES * 2
-      + panTimings.reduce((sum, t) => sum + t.readFrames, 0)
-      + SCAN_SNAP_FRAMES * (panTimings.length - 1);
+      + panTimings.reduce((sum, t) => sum + t.readFrames + t.commentTypingFrames + t.commentHoldFrames, 0)
+      + SCAN_SNAP_FRAMES * Math.max(0, nonNarrativeCount - 1);
     scanSec = SCAN_PRE_PAUSE_FRAMES / FPS + scanFrames / FPS;
   }
 
@@ -204,7 +258,7 @@ export function computeDurationFrames(cfg: SnippetConfig): number {
 }
 
 /** Key video timestamps in seconds — used by export for SFX placement. */
-export function computeVideoTimings(cfg: SnippetConfig): {
+export function computeVideoTimings(cfg: SnippetConfig, narrativeOpts?: NarrativeOpts): {
   typingStartSec: number;
   typingEndSec: number;
   zoomInStartSec: number;
@@ -212,17 +266,27 @@ export function computeVideoTimings(cfg: SnippetConfig): {
   outroStartSec: number;
   outroEndSec: number;
 } {
+  const typingCodeLength = narrativeOpts?.act1CodeLength ?? cfg.code.length;
   const typingStartSec = cfg.startDelay;
-  const typingEndSec   = typingStartSec + cfg.code.length / Math.max(1, cfg.typingSpeed);
+  const typingEndSec   = typingStartSec + typingCodeLength / Math.max(1, cfg.typingSpeed);
 
   let zoomInStartSec  = Infinity;
   let zoomOutStartSec = Infinity;
   let outroStartSec   = typingEndSec;
 
   if (cfg.scanEnabled) {
-    const panTimings = computeLinePanTimings(cfg);
-    const panFrames  = panTimings.reduce((sum, t) => sum + t.readFrames, 0)
-      + SCAN_SNAP_FRAMES * (panTimings.length - 1);
+    const panTimings = computeLinePanTimings(
+      cfg,
+      narrativeOpts?.narrativeMap,
+      narrativeOpts?.narrativeLineIndices
+    );
+    const nonNarrativeCount = narrativeOpts
+      ? panTimings.filter(t => t.readFrames > 0).length
+      : panTimings.length;
+
+    const panFrames = panTimings.reduce(
+      (sum, t) => sum + t.readFrames + t.commentTypingFrames + t.commentHoldFrames, 0
+    ) + SCAN_SNAP_FRAMES * Math.max(0, nonNarrativeCount - 1);
 
     zoomInStartSec  = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS;
     zoomOutStartSec = zoomInStartSec + SCAN_ZOOM_FRAMES / FPS + panFrames / FPS;

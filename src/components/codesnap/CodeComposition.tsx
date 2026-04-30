@@ -13,25 +13,10 @@ import {
 import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
+import { parseNarrative, autoWrapCode, getCommentLinePrefix } from "@/lib/codesnap-narrative";
 
 interface Props {
   config: SnippetConfig;
-}
-
-// Returns the comment prefix string for the given language
-function getCommentPrefix(lang: SnippetConfig["language"]): string {
-  switch (lang) {
-    case "python": case "ruby": case "bash":
-      return "# ";
-    case "html":
-      return "<!-- ";
-    case "css":
-      return "/* ";
-    case "sql":
-      return "-- ";
-    default:
-      return "// ";
-  }
 }
 
 export const CodeComposition: React.FC<Props> = ({ config }) => {
@@ -48,25 +33,86 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const isLightBg = config.background === 'chrome-flat' || config.background === 'paper-noise'
     || config.background === 'custom-gradient' || !!config.backgroundImageDataUrl;
 
-  const tokens = useMemo(
-    () => tokenize(config.code, config.language),
+  // ── Narrative parsing ────────────────────────────────────────────────────
+  const narrativeInfo = useMemo(
+    () => parseNarrative(config.code, config.language),
     [config.code, config.language]
   );
 
-  // Outro text — prefixed with language comment marker
-  const outroPrefix = config.outroEnabled && config.outroText
-    ? getCommentPrefix(config.language)
-    : "";
-  const outroFull = config.outroEnabled && config.outroText
-    ? outroPrefix + config.outroText
-    : "";
+  // All full-code lines (used for Act 2 rendering and lineMetrics)
+  const codeLines = useMemo(
+    () => config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()),
+    [config.code]
+  );
 
+  // Non-narrative lines only — what gets rendered in flow during Act 2
+  const nonNarrativeCodeLines = useMemo(
+    () => codeLines
+      .map((text, fullIdx) => ({ text, fullIdx }))
+      .filter(({ fullIdx }) => !narrativeInfo.narrativeLineIndices.has(fullIdx)),
+    [codeLines, narrativeInfo]
+  );
+
+  // ── Act 1: typed code = act1Code with long lines auto-wrapped ───────────
+  const lineHeight = config.fontSize * 1.45;
+  const chromeH    = config.windowChrome ? 46 : 0;
+  const cardH      = Math.min(
+    nonNarrativeCodeLines.length * lineHeight + config.padding * 2 + chromeH,
+    height - 420
+  );
+  const cardTop    = (height - cardH) / 2;
+  const codeAreaTop = cardTop + chromeH + config.padding;
+
+  const charWidth    = config.fontSize * 0.6;
+  const lineNumWidth = config.showLineNumbers
+    ? (String(codeLines.length).length + 1) * charWidth + 24
+    : 0;
+
+  const maxCharsPerLine = useMemo(() => {
+    const codeCardWidth = width - config.padding * 2;
+    const codeAreaWidth = codeCardWidth - config.padding * 2;
+    return Math.max(20, Math.floor((codeAreaWidth - lineNumWidth) / charWidth));
+  }, [config.fontSize, config.padding, config.showLineNumbers, width, charWidth, lineNumWidth]);
+
+  const wrappedAct1Code = useMemo(
+    () => autoWrapCode(narrativeInfo.act1Code, maxCharsPerLine),
+    [narrativeInfo.act1Code, maxCharsPerLine]
+  );
+
+  // ── Tokenization ─────────────────────────────────────────────────────────
+  const act1Tokens = useMemo(
+    () => tokenize(wrappedAct1Code, config.language),
+    [wrappedAct1Code, config.language]
+  );
+
+  // Full-code tokens split by line (for Act 2 code rendering)
+  const fullTokens = useMemo(
+    () => tokenize(config.code, config.language),
+    [config.code, config.language]
+  );
+  const fullLineTokens = useMemo(() => {
+    const result: { text: string; type: string }[][] = [];
+    let buffer: { text: string; type: string }[] = [];
+    for (const t of fullTokens) {
+      const parts = t.text.split("\n");
+      parts.forEach((part, idx) => {
+        if (part) buffer.push({ text: part, type: t.type });
+        if (idx < parts.length - 1) { result.push(buffer); buffer = []; }
+      });
+    }
+    result.push(buffer);
+    return result;
+  }, [fullTokens]);
+
+  // ── Act 1 typing ─────────────────────────────────────────────────────────
+  const act1TotalChars = wrappedAct1Code.length;
   const elapsedSec = frame / fps - config.startDelay;
-  const charsTyped = Math.max(0, Math.floor(elapsedSec * config.typingSpeed));
+  const charsTyped = Math.max(0, Math.min(act1TotalChars, Math.floor(elapsedSec * config.typingSpeed)));
+  const isTypingCode = charsTyped < act1TotalChars;
 
   let remaining = charsTyped;
   const visibleTokens: { text: string; type: string }[] = [];
-  for (const t of tokens) {
+  for (const t of act1Tokens) {
     if (remaining <= 0) break;
     if (t.text.length <= remaining) {
       visibleTokens.push(t);
@@ -78,11 +124,31 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     }
   }
 
-  const totalChars = config.code.length;
-  const isTypingCode = charsTyped < totalChars;
+  type LineToken = { text: string; type: string };
+  const renderedLines: LineToken[][] = [];
+  let buf: LineToken[] = [];
+  for (const t of visibleTokens) {
+    const parts = t.text.split("\n");
+    parts.forEach((part, idx) => {
+      if (part) buf.push({ text: part, type: t.type });
+      if (idx < parts.length - 1) { renderedLines.push(buf); buf = []; }
+    });
+  }
+  renderedLines.push(buf);
 
-  // Outro typing
-  const timings = useMemo(() => computeVideoTimings(config), [config]);
+  // ── Outro typing ─────────────────────────────────────────────────────────
+  const outroPrefix = config.outroEnabled && config.outroText ? getCommentLinePrefix(config.language) : "";
+  const outroFull   = config.outroEnabled && config.outroText ? outroPrefix + config.outroText : "";
+
+  const timings = useMemo(
+    () => computeVideoTimings(config, {
+      act1CodeLength: act1TotalChars,
+      narrativeMap: narrativeInfo.narrativeMap,
+      narrativeLineIndices: narrativeInfo.narrativeLineIndices,
+    }),
+    [config, act1TotalChars, narrativeInfo]
+  );
+
   const outroStartFrame = config.outroEnabled && outroFull.length > 0
     ? Math.round(timings.outroStartSec * fps)
     : Infinity;
@@ -90,14 +156,16 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     ? (frame - outroStartFrame) / fps * config.typingSpeed
     : 0;
   const outroCharsTyped = Math.min(Math.floor(outroElapsed), outroFull.length);
-  const outroVisible = outroFull.slice(0, outroCharsTyped);
-  const isTypingOutro = outroFull.length > 0 && outroCharsTyped < outroFull.length && frame >= outroStartFrame;
+  const outroVisible    = outroFull.slice(0, outroCharsTyped);
+  const isTypingOutro   = outroFull.length > 0 && outroCharsTyped < outroFull.length && frame >= outroStartFrame;
 
   const cursorVisible = Math.floor(frame / (fps * 0.5)) % 2 === 0;
 
+  // ── Intro animation ───────────────────────────────────────────────────────
   const introOpacity = interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp" });
   const introScale   = interpolate(frame, [0, 22], [0.96, 1], { extrapolateRight: "clamp" });
 
+  // ── Colors ────────────────────────────────────────────────────────────────
   const colorFor = (type: string): string => {
     switch (type) {
       case "comment":     return theme.comment;
@@ -111,45 +179,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     }
   };
 
-  type LineToken = { text: string; type: string };
-  const renderedLines: LineToken[][] = [];
-  let buffer: LineToken[] = [];
-  for (const t of visibleTokens) {
-    const parts = t.text.split("\n");
-    parts.forEach((part, idx) => {
-      if (part) buffer.push({ text: part, type: t.type });
-      if (idx < parts.length - 1) { renderedLines.push(buffer); buffer = []; }
-    });
-  }
-  renderedLines.push(buffer);
-
-  const lineHeight       = config.fontSize * 1.45;
-  const totalLines       = config.code.split("\n").length;
-  const visibleLineCount = renderedLines.length;
-
-  // Auto-scroll during typing
-  const cardInnerHeight = height - config.padding * 2 - 200;
-  const maxVisibleLines = Math.floor(cardInnerHeight / lineHeight);
-
-  // Account for outro line when scrolling
-  const extraOutroLine = outroVisible.length > 0 ? 1 : 0;
-  const scrollLines = Math.max(0, visibleLineCount + extraOutroLine - maxVisibleLines + 2);
-  const typingScrollY = -scrollLines * lineHeight;
-
-  // ── Scan-read effect ─────────────────────────────────────────────────
-  const chromeH        = config.windowChrome ? 46 : 0;
-  const cardH          = Math.min(
-    totalLines * lineHeight + config.padding * 2 + chromeH,
-    height - 420
-  );
-  const cardTop        = (height - cardH) / 2;
-  const codeAreaTop    = cardTop + chromeH + config.padding;
-
-  const xCodeLeft = config.padding * 2;
+  // ── Scan timing constants ─────────────────────────────────────────────────
   const SCAN_ZOOM = config.scanZoom;
+  const xCodeLeft = config.padding * 2;
+  const Tx_left   = -xCodeLeft;
+
+  const maxVisibleLines = Math.floor((cardH - chromeH - config.padding * 2) / lineHeight);
 
   const typingEndFrame = Math.round(
-    (config.startDelay + totalChars / Math.max(1, config.typingSpeed)) * fps
+    (config.startDelay + act1TotalChars / Math.max(1, config.typingSpeed)) * fps
   );
   const scanStartFrame = config.scanEnabled
     ? typingEndFrame + SCAN_PRE_PAUSE_FRAMES
@@ -157,68 +195,87 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const zoomInEndFrame = scanStartFrame + SCAN_ZOOM_FRAMES;
   const panStartFrame  = zoomInEndFrame;
 
-  const clamp     = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
-  const easeOut   = { ...clamp, easing: Easing.out(Easing.cubic) };
-  const easeInOut = { ...clamp, easing: Easing.inOut(Easing.cubic) };
+  const isAct1 = frame < scanStartFrame;
 
-  const Tx_left = -xCodeLeft;
-
-  const charWidth    = config.fontSize * 0.6;
-  const lineNumWidth = config.showLineNumbers
-    ? (String(totalLines).length + 1) * charWidth + 24
-    : 0;
-
-  const codeLines = useMemo(
-    () => config.code.split("\n").map(l => l.replace(/\r$/, "").trimEnd()),
-    [config.code]
+  // ── Pan timings (indexed by fullCode line index) ──────────────────────────
+  const panTimings = useMemo(
+    () => computeLinePanTimings(
+      config,
+      narrativeInfo.narrativeMap,
+      narrativeInfo.narrativeLineIndices
+    ),
+    [config, narrativeInfo]
   );
 
+  // ── lineMetrics — only for non-narrative lines (the scan pan stops) ───────
   const lineMetrics = useMemo(() => {
     const visibleWidth = width / SCAN_ZOOM;
-
-    return codeLines.map((lineText, idx) => {
-      const lineContentEnd = xCodeLeft + lineNumWidth + lineText.length * charWidth;
+    return nonNarrativeCodeLines.map(({ text, fullIdx }, visualIdx) => {
+      const lineContentEnd = xCodeLeft + lineNumWidth + text.length * charWidth;
       const idealTx  = visibleWidth - lineContentEnd;
       const targetTx = Math.min(idealTx, Tx_left);
       const scrollDist = Math.abs(Tx_left - targetTx);
 
-      const scroll = Math.max(0, idx - maxVisibleLines + 3) * lineHeight;
-      const absY   = codeAreaTop + idx * lineHeight - scroll;
+      const scroll = Math.max(0, visualIdx - maxVisibleLines + 3) * lineHeight;
+      const absY   = codeAreaTop + visualIdx * lineHeight - scroll;
       const Ty     = height / 2 - absY;
 
-      return { targetTx, scrollDist, Ty, scroll: -scroll };
+      return { fullIdx, targetTx, scrollDist, Ty, scroll: -scroll };
     });
-  }, [codeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
+  }, [nonNarrativeCodeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height]);
 
-  const panTimings = useMemo(() => computeLinePanTimings(config), [config]);
-
+  // ── lineSchedules — one entry per non-narrative line ─────────────────────
   const { lineSchedules, dynamicScanFrames } = useMemo(() => {
     let cursor = 0;
-    const schedules = lineMetrics.map((m, idx) => {
-      const readDuration = panTimings[idx]?.readFrames ?? SCAN_BASE_READ_FRAMES;
-      const start   = cursor;
-      const end     = start + readDuration;
-      const snapEnd = idx === lineMetrics.length - 1 ? end : end + SCAN_SNAP_FRAMES;
+    const schedules = lineMetrics.map((m, schedIdx) => {
+      const timing = panTimings[m.fullIdx] ?? { readFrames: SCAN_BASE_READ_FRAMES, commentTypingFrames: 0, commentHoldFrames: 0 };
+      const start      = cursor;
+      const arriveEnd  = start + timing.readFrames;
+      const commentEnd = arriveEnd + timing.commentTypingFrames;
+      const holdEnd    = commentEnd + timing.commentHoldFrames;
+      const isLast     = schedIdx === lineMetrics.length - 1;
+      const snapEnd    = isLast ? holdEnd : holdEnd + SCAN_SNAP_FRAMES;
       cursor = snapEnd;
-      return { start, end, snapEnd };
+      return { fullIdx: m.fullIdx, start, arriveEnd, commentEnd, holdEnd, snapEnd };
     });
     return { lineSchedules: schedules, dynamicScanFrames: cursor };
   }, [lineMetrics, panTimings]);
+
+  // Quick lookup: fullIdx → schedule
+  const schedByFullIdx = useMemo(
+    () => new Map(lineSchedules.map(s => [s.fullIdx, s])),
+    [lineSchedules]
+  );
 
   const panEndFrame       = panStartFrame + dynamicScanFrames;
   const zoomOutStartFrame = panEndFrame;
   const zoomOutEndFrame   = zoomOutStartFrame + SCAN_ZOOM_FRAMES;
 
+  // ── Scene transform ───────────────────────────────────────────────────────
+  const clamp     = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
+  const easeOut   = { ...clamp, easing: Easing.out(Easing.cubic) };
+  const easeInOut = { ...clamp, easing: Easing.inOut(Easing.cubic) };
+
   let sceneZoom        = 1;
   let sceneTranslateX  = 0;
   let sceneTranslateY  = 0;
-  let effectiveScrollY = typingScrollY;
+
+  // Act 1 auto-scroll
+  const extraOutroLine = outroVisible.length > 0 ? 1 : 0;
+  const act1ScrollLines = Math.max(0, renderedLines.length + extraOutroLine - maxVisibleLines + 2);
+  const act1ScrollY = -act1ScrollLines * lineHeight;
+
+  // Act 2 scroll (post zoom-out)
+  const act2ScrollLines = Math.max(0, nonNarrativeCodeLines.length + extraOutroLine - maxVisibleLines + 2);
+  const act2ScrollY = -act2ScrollLines * lineHeight;
+
+  let effectiveScrollY = act1ScrollY;
 
   if (frame < scanStartFrame) {
-    effectiveScrollY = typingScrollY;
+    effectiveScrollY = act1ScrollY;
 
   } else if (frame <= zoomInEndFrame) {
-    const m0 = lineMetrics[0];
+    const m0 = lineMetrics[0] ?? { Ty: 0, scroll: 0 };
     sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], easeOut);
     sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], easeOut);
     sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, Tx_left], easeOut);
@@ -227,73 +284,143 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   } else if (frame < panEndFrame) {
     sceneZoom = SCAN_ZOOM;
     const scanFrame = frame - panStartFrame;
+    const schedIdx  = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
+    const ci        = schedIdx === -1 ? lineSchedules.length - 1 : schedIdx;
+    const sched     = lineSchedules[ci];
+    const curr      = lineMetrics[ci];
 
-    const lineIdx = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
-    const currentIdx = lineIdx === -1 ? lineSchedules.length - 1 : lineIdx;
-
-    const sched = lineSchedules[currentIdx];
-    const curr  = lineMetrics[currentIdx];
-    const inLineFrame = scanFrame - sched.start;
-
-    if (scanFrame < sched.end) {
-      effectiveScrollY = curr.scroll;
-      sceneTranslateY  = curr.Ty;
-      sceneTranslateX  = interpolate(inLineFrame, [0, sched.end - sched.start], [Tx_left, curr.targetTx], easeOut);
+    if (!sched || !curr) {
+      effectiveScrollY = 0;
     } else {
-      const next = lineMetrics[currentIdx + 1] || curr;
-      const snapFrame = scanFrame - sched.end;
-      const snapProgress = spring({
-        fps,
-        frame: snapFrame,
-        config: { damping: 40, stiffness: 200 },
-        durationInFrames: SCAN_SNAP_FRAMES,
-      });
-      effectiveScrollY = curr.scroll  + (next.scroll  - curr.scroll)  * snapProgress;
-      sceneTranslateY  = curr.Ty      + (next.Ty      - curr.Ty)      * snapProgress;
-      sceneTranslateX  = curr.targetTx + (Tx_left     - curr.targetTx) * snapProgress;
+      const inLineFrame = scanFrame - sched.start;
+
+      if (scanFrame < sched.arriveEnd) {
+        // Panning to this line
+        effectiveScrollY = curr.scroll;
+        sceneTranslateY  = curr.Ty;
+        sceneTranslateX  = interpolate(
+          inLineFrame, [0, Math.max(1, sched.arriveEnd - sched.start)],
+          [Tx_left, curr.targetTx], easeOut
+        );
+      } else if (scanFrame < sched.holdEnd) {
+        // At line — typing comment + hold, camera locked
+        effectiveScrollY = curr.scroll;
+        sceneTranslateY  = curr.Ty;
+        sceneTranslateX  = curr.targetTx;
+      } else {
+        // Snapping to next line
+        const next      = lineMetrics[ci + 1] ?? curr;
+        const snapFrame = scanFrame - sched.holdEnd;
+        const snapProg  = spring({
+          fps,
+          frame: snapFrame,
+          config: { damping: 40, stiffness: 200 },
+          durationInFrames: SCAN_SNAP_FRAMES,
+        });
+        effectiveScrollY = curr.scroll   + (next.scroll   - curr.scroll)   * snapProg;
+        sceneTranslateY  = curr.Ty       + (next.Ty       - curr.Ty)       * snapProg;
+        sceneTranslateX  = curr.targetTx + (Tx_left       - curr.targetTx) * snapProg;
+      }
     }
 
   } else if (frame <= zoomOutEndFrame) {
-    const lastLine = lineMetrics[lineMetrics.length - 1];
+    const last = lineMetrics[lineMetrics.length - 1] ?? { Ty: 0, targetTx: 0, scroll: 0 };
     sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], easeInOut);
-    sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.Ty, 0], easeInOut);
-    sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [lastLine.targetTx, 0], easeInOut);
+    sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty, 0], easeInOut);
+    sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.targetTx, 0], easeInOut);
     effectiveScrollY = 0;
 
   } else {
     sceneZoom        = 1;
     sceneTranslateX  = 0;
     sceneTranslateY  = 0;
-    effectiveScrollY = typingScrollY;
+    effectiveScrollY = act2ScrollY;
   }
 
-  // Scan highlight
-  let highlightLineIdx = -1;
+  // ── Highlight line (visual index into nonNarrativeCodeLines) ─────────────
+  let highlightSchedIdx = -1;
   if (frame >= panStartFrame && frame < panEndFrame) {
     const scanF = frame - panStartFrame;
-    const li = lineSchedules.findIndex(s => scanF < s.snapEnd);
-    const ci = li === -1 ? lineSchedules.length - 1 : li;
-    if (scanF < lineSchedules[ci].end) {
-      highlightLineIdx = ci;
+    const si    = lineSchedules.findIndex(s => scanF < s.snapEnd);
+    if (si !== -1 && scanF < lineSchedules[si].holdEnd) {
+      highlightSchedIdx = si;
     }
   }
 
-  // Title fades out 1.5s after typing starts
+  // ── Narrative comment typing (inline mode) ────────────────────────────────
+  // Returns how many chars of the comment for a given codeLineIdx have been revealed
+  const getNarrativeChars = (codeLineFullIdx: number): { chars: number; typing: boolean } => {
+    if (!config.scanEnabled || frame < panStartFrame || frame >= panEndFrame) return { chars: 0, typing: false };
+    const sched = schedByFullIdx.get(codeLineFullIdx);
+    if (!sched) return { chars: 0, typing: false };
+    const commentText = narrativeInfo.narrativeMap.get(codeLineFullIdx) ?? "";
+    if (!commentText) return { chars: 0, typing: false };
+    const scanFrame = frame - panStartFrame;
+    if (scanFrame < sched.arriveEnd) return { chars: 0, typing: false };
+    const commentScanFrame = scanFrame - sched.arriveEnd;
+    const chars = Math.min(commentText.length, Math.floor(commentScanFrame / fps * config.typingSpeed));
+    return { chars, typing: chars < commentText.length };
+  };
+
+  // Subtitle text (when commentStyle === "subtitle")
+  let subtitleText = "";
+  let isTypingSubtitle = false;
+  if (config.scanEnabled && config.commentStyle === "subtitle" && frame >= panStartFrame && frame < panEndFrame) {
+    const scanFrame = frame - panStartFrame;
+    const si = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
+    if (si !== -1) {
+      const sched = lineSchedules[si];
+      if (scanFrame >= sched.arriveEnd && scanFrame < sched.holdEnd) {
+        const commentText = narrativeInfo.narrativeMap.get(sched.fullIdx) ?? "";
+        if (commentText) {
+          const { chars, typing } = getNarrativeChars(sched.fullIdx);
+          subtitleText = commentText.slice(0, chars);
+          isTypingSubtitle = typing;
+        }
+      }
+    }
+  }
+
+  // Is a narrative comment actively being typed? (for SFX)
+  const isTypingNarrativeComment = (() => {
+    if (!config.scanEnabled || frame < panStartFrame || frame >= panEndFrame) return false;
+    const scanFrame = frame - panStartFrame;
+    const si = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
+    if (si === -1) return false;
+    const sched = lineSchedules[si];
+    return scanFrame >= sched.arriveEnd && scanFrame < sched.commentEnd;
+  })();
+
+  // ── Title opacity ─────────────────────────────────────────────────────────
   const titleOpacity =
     config.showTitle && config.title.trim()
       ? interpolate(frame, [Math.round(fps * 1.5), Math.round(fps * 2.5)], [1, 0], clamp)
       : 0;
 
   const fontScale = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
-
   const startTypingFrame = Math.round(config.startDelay * fps);
 
-  // Background music
+  // ── Background music ──────────────────────────────────────────────────────
   const bgMusicUrl = useMemo(
     () => config.bgMusicDataUrl
       ?? (config.bgMusicPreset ? getMusicPreset(config.bgMusicPreset as MusicPresetKey) : null),
     [config.bgMusicDataUrl, config.bgMusicPreset]
   );
+
+  // ── Cursor element ─────────────────────────────────────────────────────────
+  const cursor = (
+    <span style={{
+      display: "inline-block",
+      width: 2,
+      height: config.fontSize * 1.1,
+      background: theme.cursor,
+      verticalAlign: "middle",
+      marginLeft: 1,
+      opacity: cursorVisible ? 1 : 0,
+    }} />
+  );
+
+  const commentPrefix = getCommentLinePrefix(config.language);
 
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
@@ -350,17 +477,26 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       {/* Sound effects */}
       {config.sfxEnabled && (
         <>
-          {/* Mouse click at video start */}
           <Sequence from={0}>
             <Audio src={SFX_START_CLICK} volume={config.sfxVolume * 0.75} />
           </Sequence>
 
-          {/* Typing click — code */}
+          {/* Typing click — Act 1 code typing */}
           {frame >= startTypingFrame && isTypingCode && (
             <Audio
               src={SFX_TYPE_CLICK}
               volume={config.sfxVolume * 0.55}
-              // @ts-expect-error loop is valid but not yet in Remotion's types
+              // @ts-expect-error loop is valid
+              loop
+            />
+          )}
+
+          {/* Typing click — narrative comment typing in Act 2 */}
+          {isTypingNarrativeComment && (
+            <Audio
+              src={SFX_TYPE_CLICK}
+              volume={config.sfxVolume * 0.50}
+              // @ts-expect-error loop is valid
               loop
             />
           )}
@@ -384,7 +520,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             <Audio
               src={SFX_TYPE_CLICK}
               volume={config.sfxVolume * 0.55}
-              // @ts-expect-error loop is valid but not yet in Remotion's types
+              // @ts-expect-error loop is valid
               loop
             />
           )}
@@ -401,18 +537,16 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         }}
       >
         {/* Brand watermark */}
-        <div
-          style={{
-            position: "absolute",
-            top: 60,
-            left: 0,
-            right: 0,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 20,
-          }}
-        >
+        <div style={{
+          position: "absolute",
+          top: 60,
+          left: 0,
+          right: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 20,
+        }}>
           <div style={{
             fontFamily: fontScale,
             color: isLightBg ? "rgba(0, 0, 0, 0.28)" : "rgba(255, 255, 255, 0.4)",
@@ -462,6 +596,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           flexDirection: "column",
           borderRadius: isY2K ? 0 : 4,
         }}>
+          {/* Window chrome */}
           {config.windowChrome && (isY2K ? (
             <div style={{
               display: "flex",
@@ -470,7 +605,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               borderBottom: `2px solid #000`,
               background: "linear-gradient(180deg, #4488ff 0%, #1155dd 50%, #0044bb 100%)",
               height: 46,
-              gap: 0,
             }}>
               <div style={{
                 flex: 1,
@@ -485,26 +619,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 {config.filename}
               </div>
               <div style={{ display: 'flex', gap: 3 }}>
-                {[
-                  { label: '—', bold: false },
-                  { label: '□', bold: false },
-                  { label: '✕', bold: true },
-                ].map((btn, i) => (
+                {[{ label: '—' }, { label: '□' }, { label: '✕' }].map((btn, i) => (
                   <div key={i} style={{
-                    width: 26,
-                    height: 22,
+                    width: 26, height: 22,
                     backgroundColor: '#c0c0c0',
                     border: '2px solid',
                     borderColor: '#ffffff #606060 #606060 #ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 14,
-                    fontFamily: 'Arial, Helvetica, sans-serif',
-                    fontWeight: btn.bold ? 'bold' : 'normal',
-                    color: '#000000',
-                    lineHeight: 1,
-                    userSelect: 'none' as const,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontFamily: 'Arial, Helvetica, sans-serif', color: '#000',
+                    lineHeight: 1, userSelect: 'none' as const,
                   }}>
                     {btn.label}
                   </div>
@@ -535,12 +658,14 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             </div>
           ))}
 
+          {/* Code area */}
           <div style={{
             flex: 1,
             padding: config.padding,
             position: "relative",
             overflow: "hidden",
           }}>
+            {/* Scrolling content */}
             <div style={{
               transform: `translateY(${effectiveScrollY}px)`,
               transition: "none",
@@ -549,18 +674,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               lineHeight: `${lineHeight}px`,
               color: theme.text,
               whiteSpace: "pre",
+              position: "relative",
             }}>
-              {renderedLines.map((lineTokens, lineIdx) => (
-                <div key={lineIdx} style={{
-                  display: "flex",
-                  minHeight: lineHeight,
-                  background: lineIdx === highlightLineIdx ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)") : "transparent",
-                  borderRadius: 2,
-                }}>
+              {/* ── ACT 1: typing animation using wrappedAct1Code ── */}
+              {isAct1 && renderedLines.map((lineTokens, lineIdx) => (
+                <div key={lineIdx} style={{ display: "flex", minHeight: lineHeight }}>
                   {config.showLineNumbers && (
                     <span style={{
                       color: theme.lineNumber,
-                      width: `${String(totalLines).length + 1}ch`,
+                      width: `${String(codeLines.length).length + 1}ch`,
                       textAlign: "right",
                       paddingRight: 24,
                       userSelect: "none",
@@ -569,61 +691,111 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                       {lineIdx + 1}
                     </span>
                   )}
-                  <span style={{
-                    flex: 1,
-                    filter: lineIdx === highlightLineIdx ? "brightness(1.4)" : undefined,
-                  }}>
+                  <span style={{ flex: 1 }}>
                     {lineTokens.map((t, ti) => (
-                      <span key={ti} style={{ color: colorFor(t.type) }}>
-                        {t.text}
-                      </span>
+                      <span key={ti} style={{ color: colorFor(t.type) }}>{t.text}</span>
                     ))}
-                    {isTypingCode && lineIdx === renderedLines.length - 1 && config.showCursor && (
-                      <span style={{
-                        display: "inline-block",
-                        width: 2,
-                        height: config.fontSize * 1.1,
-                        background: theme.cursor,
-                        verticalAlign: "middle",
-                        marginLeft: 1,
-                        opacity: cursorVisible ? 1 : 0,
-                      }} />
-                    )}
+                    {isTypingCode && lineIdx === renderedLines.length - 1 && config.showCursor && cursor}
                   </span>
                 </div>
               ))}
 
+              {/* ── ACT 2: full code rendering (no narrative lines in flow) ── */}
+              {!isAct1 && nonNarrativeCodeLines.map(({ fullIdx }, visualIdx) => {
+                const lineTokens = fullLineTokens[fullIdx] ?? [];
+                const isHighlighted = visualIdx === highlightSchedIdx;
+
+                // Narrative comment for this code line (inline mode)
+                const narrativeText = narrativeInfo.narrativeMap.get(fullIdx);
+                const { chars: narChars, typing: narTyping } = narrativeText
+                  ? getNarrativeChars(fullIdx)
+                  : { chars: 0, typing: false };
+
+                return (
+                  <React.Fragment key={fullIdx}>
+                    {/* Narrative comment — appears above the code line, inline style */}
+                    {config.commentStyle === "inline" && narrativeText && narChars > 0 && (
+                      <div style={{
+                        display: "flex",
+                        minHeight: lineHeight,
+                        background: isHighlighted
+                          ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
+                          : "transparent",
+                        borderRadius: 2,
+                      }}>
+                        {config.showLineNumbers && (
+                          <span style={{
+                            color: theme.lineNumber,
+                            width: `${String(codeLines.length).length + 1}ch`,
+                            textAlign: "right",
+                            paddingRight: 24,
+                            userSelect: "none",
+                            flexShrink: 0,
+                          }} />
+                        )}
+                        <span style={{
+                          flex: 1,
+                          color: theme.comment,
+                          filter: isHighlighted ? "brightness(1.4)" : undefined,
+                        }}>
+                          {commentPrefix}{narrativeText.slice(0, narChars)}
+                          {narTyping && config.showCursor && cursor}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Code line */}
+                    <div style={{
+                      display: "flex",
+                      minHeight: lineHeight,
+                      background: isHighlighted
+                        ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
+                        : "transparent",
+                      borderRadius: 2,
+                    }}>
+                      {config.showLineNumbers && (
+                        <span style={{
+                          color: theme.lineNumber,
+                          width: `${String(codeLines.length).length + 1}ch`,
+                          textAlign: "right",
+                          paddingRight: 24,
+                          userSelect: "none",
+                          flexShrink: 0,
+                        }}>
+                          {visualIdx + 1}
+                        </span>
+                      )}
+                      <span style={{
+                        flex: 1,
+                        filter: isHighlighted ? "brightness(1.4)" : undefined,
+                      }}>
+                        {lineTokens.map((t, ti) => (
+                          <span key={ti} style={{ color: colorFor(t.type) }}>{t.text}</span>
+                        ))}
+                      </span>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+
               {/* Outro / CTA line */}
               {outroVisible.length > 0 && (
-                <div style={{
-                  display: "flex",
-                  minHeight: lineHeight,
-                }}>
+                <div style={{ display: "flex", minHeight: lineHeight }}>
                   {config.showLineNumbers && (
                     <span style={{
                       color: theme.lineNumber,
-                      width: `${String(totalLines).length + 1}ch`,
+                      width: `${String(codeLines.length).length + 1}ch`,
                       textAlign: "right",
                       paddingRight: 24,
                       userSelect: "none",
                       flexShrink: 0,
                     }}>
-                      {totalLines + 1}
+                      {nonNarrativeCodeLines.length + 1}
                     </span>
                   )}
                   <span style={{ flex: 1, color: theme.comment }}>
                     {outroVisible}
-                    {isTypingOutro && config.showCursor && (
-                      <span style={{
-                        display: "inline-block",
-                        width: 2,
-                        height: config.fontSize * 1.1,
-                        background: theme.cursor,
-                        verticalAlign: "middle",
-                        marginLeft: 1,
-                        opacity: cursorVisible ? 1 : 0,
-                      }} />
-                    )}
+                    {isTypingOutro && config.showCursor && cursor}
                   </span>
                 </div>
               )}
@@ -632,17 +804,49 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         </div>
       </div>
 
+      {/* ── Subtitle overlay (TikTok-style, outside the code card) ── */}
+      {config.commentStyle === "subtitle" && subtitleText && (
+        <div style={{
+          position: "absolute",
+          bottom: 180,
+          left: 60,
+          right: 60,
+          zIndex: 30,
+          background: "rgba(0,0,0,0.75)",
+          borderRadius: 16,
+          padding: "20px 28px",
+          fontFamily: fontScale,
+          fontSize: 42,
+          lineHeight: 1.35,
+          color: "#ffffff",
+          textAlign: "center",
+          fontWeight: 700,
+          letterSpacing: "-0.01em",
+        }}>
+          {subtitleText}
+          {isTypingSubtitle && config.showCursor && (
+            <span style={{
+              display: "inline-block",
+              width: 3,
+              height: 42,
+              background: "#fff",
+              marginLeft: 4,
+              verticalAlign: "middle",
+              opacity: cursorVisible ? 1 : 0,
+            }} />
+          )}
+        </div>
+      )}
+
       {/* Subtle CRT scanline texture */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-          zIndex: 5,
-          backgroundImage: 'repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.025) 2px, rgba(0,0,0,0.025) 3px)',
-          backgroundSize: '100% 3px',
-        }}
-      />
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 5,
+        backgroundImage: 'repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.025) 2px, rgba(0,0,0,0.025) 3px)',
+        backgroundSize: '100% 3px',
+      }} />
     </AbsoluteFill>
   );
 };
