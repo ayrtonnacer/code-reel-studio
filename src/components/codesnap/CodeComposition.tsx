@@ -292,8 +292,16 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const act1ScrollLines = Math.max(0, renderedLines.length + extraOutroLine - maxVisibleLines + 2);
   const act1ScrollY = -act1ScrollLines * lineHeight;
 
-  // Act 2 scroll (post zoom-out)
-  const act2ScrollLines = Math.max(0, nonNarrativeCodeLines.length + extraOutroLine - maxVisibleLines + 2);
+  // Act 2 scroll (post zoom-out) — account for extra lines from narrative comments and wrapped intro comments
+  const totalNarrativeCommentLines = config.commentStyle === "inline"
+    ? lineMetrics.reduce((sum, m) => sum + m.commentLines.length, 0)
+    : 0;
+  const totalWrappedIntroExtraLines = nonNarrativeCodeLines.reduce((sum, { fullIdx }) => {
+    const intro = panTimings[fullIdx]?.introWrappedLines;
+    return sum + (intro && intro.length > 1 ? intro.length - 1 : 0);
+  }, 0);
+  const act2TotalLines = nonNarrativeCodeLines.length + extraOutroLine + totalNarrativeCommentLines + totalWrappedIntroExtraLines;
+  const act2ScrollLines = Math.max(0, act2TotalLines - maxVisibleLines + 2);
   const act2ScrollY = -act2ScrollLines * lineHeight;
 
   let effectiveScrollY = act1ScrollY;
@@ -401,7 +409,13 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     totalChars: number; isTyping: boolean;
   } => {
     const none = { line1Chars: 0, line2Chars: 0, typingLine1: false, typingLine2: false, totalChars: 0, isTyping: false };
-    if (!config.scanEnabled || frame < panStartFrame || frame >= panEndFrame) return none;
+    if (!config.scanEnabled || frame < panStartFrame) return none;
+    // After scan ends, comments remain fully visible
+    if (frame >= panEndFrame) {
+      const line1Text = metricLines[0] ?? "";
+      const line2Text = metricLines[1] ?? "";
+      return { line1Chars: line1Text.length, line2Chars: line2Text.length, typingLine1: false, typingLine2: false, totalChars: line1Text.length + line2Text.length, isTyping: false };
+    }
     const sched = schedByFullIdx.get(codeLineFullIdx);
     if (!sched || metricLines.length === 0) return none;
     const scanFrame = frame - panStartFrame;

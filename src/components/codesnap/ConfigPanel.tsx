@@ -540,7 +540,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             <Field label={`Scan zoom · ${config.scanZoom.toFixed(1)}×`}>
               <Slider
                 value={[config.scanZoom]}
-                min={2}
+                min={1}
                 max={15}
                 step={0.5}
                 onValueChange={([v]) => onChange({ scanZoom: v })}
