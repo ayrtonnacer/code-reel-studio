@@ -385,14 +385,75 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
         />
 
         {config.showTitle && (
-          <Field label="Title">
-            <Input
-              value={config.title}
-              onChange={(e) => onChange({ title: e.target.value })}
-              className="font-mono brutal-border rounded-none"
-              placeholder="e.g. Quicksort in 7 lines"
-            />
-          </Field>
+          <>
+            <Field label="Title">
+              <Input
+                value={config.title}
+                onChange={(e) => onChange({ title: e.target.value })}
+                className="font-mono brutal-border rounded-none"
+                placeholder="e.g. Quicksort in 7 lines"
+              />
+            </Field>
+
+            <div className="brutal-border bg-concrete p-4 space-y-3">
+              <Label className="font-mono text-xs tracking-wide text-muted-foreground">Title text color</Label>
+              <div className="flex gap-2 flex-wrap">
+                {["#ffffff", "#000000", "#f9fafb", "#1a1a1a", "#fbbf24", "#3b82f6", "#ec4899", "#10b981"].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => onChange({ titleColor: color })}
+                    style={{
+                      background: color,
+                      width: 28,
+                      height: 28,
+                      border: config.titleColor === color ? "3px solid #ff5722" : "2px solid #666",
+                      borderRadius: 4,
+                      flexShrink: 0,
+                    }}
+                  />
+                ))}
+              </div>
+              <ColorField label="Custom hex" value={config.titleColor} onChange={(v) => onChange({ titleColor: v })} />
+            </div>
+
+            <div className="brutal-border bg-concrete p-4 space-y-3">
+              <ToggleRow
+                label="Title background"
+                checked={config.titleBgEnabled}
+                onChange={(v) => onChange({ titleBgEnabled: v })}
+              />
+              {config.titleBgEnabled && (
+                <>
+                  <div className="flex gap-2 flex-wrap">
+                    {["#000000", "#ffffff", "#1a1a1a", "#f9fafb", "#1e1b4b", "#052e16"].map(color => (
+                      <button
+                        key={color}
+                        onClick={() => onChange({ titleBgColor: color })}
+                        style={{
+                          background: color,
+                          width: 28,
+                          height: 28,
+                          border: config.titleBgColor === color ? "3px solid #ff5722" : "2px solid #666",
+                          borderRadius: 4,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <ColorField label="Background color" value={config.titleBgColor} onChange={(v) => onChange({ titleBgColor: v })} />
+                  <Field label={`Opacity · ${Math.round(config.titleBgOpacity * 100)}%`}>
+                    <Slider
+                      value={[config.titleBgOpacity]}
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      onValueChange={([v]) => onChange({ titleBgOpacity: v })}
+                    />
+                  </Field>
+                </>
+              )}
+            </div>
+          </>
         )}
 
         {/* Outro / CTA */}

@@ -209,7 +209,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     () => computeLinePanTimings(
       config,
       narrativeInfo.narrativeMap,
-      narrativeInfo.narrativeLineIndices
+      narrativeInfo.narrativeLineIndices,
+      narrativeInfo.introLineIndices
     ),
     [config, narrativeInfo]
   );
@@ -218,7 +219,12 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const lineMetrics = useMemo(() => {
     const visibleWidth = width / SCAN_ZOOM;
     return nonNarrativeCodeLines.map(({ text, fullIdx }, visualIdx) => {
-      const lineContentEnd = xCodeLeft + lineNumWidth + text.length * charWidth;
+      // For intro comment lines, use the longest wrapped line length for camera positioning
+      const introWrapped = panTimings[fullIdx]?.introWrappedLines;
+      const effectiveText = introWrapped && introWrapped.length > 0
+        ? introWrapped.reduce((a, b) => a.trimEnd().length >= b.trimEnd().length ? a : b)
+        : text;
+      const lineContentEnd = xCodeLeft + lineNumWidth + effectiveText.trimEnd().length * charWidth;
       const idealTx  = visibleWidth - lineContentEnd;
       const targetTx = Math.min(idealTx, Tx_left);
       const scrollDist = Math.abs(Tx_left - targetTx);
@@ -324,15 +330,20 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           [panStartX, curr.targetTx], easeOut
         );
       } else if (scanFrame < sched.commentLine2Start) {
-        // Line 1 typing — pan linearly from code end to comment end
+        // Line 1 typing — snap back to left edge then pan to comment end
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
-        const commentFrame    = scanFrame - sched.arriveEnd;
-        const line1Duration   = Math.max(1, sched.commentLine2Start - sched.arriveEnd);
-        sceneTranslateX  = interpolate(
-          commentFrame, [0, line1Duration],
-          [curr.targetTx, curr.commentTargetTx], clamp
-        );
+        const commentFrame  = scanFrame - sched.arriveEnd;
+        const line1Duration = Math.max(1, sched.commentLine2Start - sched.arriveEnd);
+        // Smooth snap-back to panStartX over a few frames (only needed when camera panned right for long line)
+        const snapBackFrames = curr.targetTx === panStartX ? 0 : Math.min(4, Math.floor(line1Duration / 3));
+        if (snapBackFrames > 0 && commentFrame < snapBackFrames) {
+          sceneTranslateX = interpolate(commentFrame, [0, snapBackFrames], [curr.targetTx, panStartX], easeOut);
+        } else {
+          const f = Math.max(0, commentFrame - snapBackFrames);
+          const d = Math.max(1, line1Duration - snapBackFrames);
+          sceneTranslateX = interpolate(f, [0, d], [panStartX, curr.commentTargetTx], clamp);
+        }
       } else if (scanFrame < sched.commentEnd) {
         // Line 2 typing — camera holds at commentTargetTx while second line types
         effectiveScrollY = curr.scroll;
@@ -472,6 +483,15 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   );
 
   const commentPrefix = getCommentLinePrefix(config.language);
+
+  const hexToRgba = (hex: string, opacity: number): string => {
+    const h = hex.replace("#", "");
+    const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${opacity})`;
+  };
 
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
@@ -617,12 +637,25 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             fontSize: 58,
             lineHeight: 1.15,
             letterSpacing: "-0.02em",
-            color: isLightBg ? "#0a0a0a" : "#fff",
             fontWeight: 700,
             textAlign: "center",
             opacity: titleOpacity,
           }}>
-            {config.title.charAt(0).toUpperCase() + config.title.slice(1)}
+            {config.titleBgEnabled ? (
+              <span style={{
+                display: "inline",
+                color: config.titleColor,
+                backgroundColor: hexToRgba(config.titleBgColor, config.titleBgOpacity),
+                padding: "6px 16px",
+                borderRadius: 10,
+              }}>
+                {config.title.charAt(0).toUpperCase() + config.title.slice(1)}
+              </span>
+            ) : (
+              <span style={{ color: config.titleColor }}>
+                {config.title.charAt(0).toUpperCase() + config.title.slice(1)}
+              </span>
+            )}
           </div>
         )}
 
@@ -751,6 +784,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               {!isAct1 && nonNarrativeCodeLines.map(({ fullIdx }, visualIdx) => {
                 const lineTokens = fullLineTokens[fullIdx] ?? [];
                 const isHighlighted = visualIdx === highlightSchedIdx;
+                const isIntroComment = narrativeInfo.introLineIndices.has(fullIdx);
+                const introWrappedLines = panTimings[fullIdx]?.introWrappedLines;
 
                 // Narrative comment for this code line (inline mode)
                 const narrativeText = narrativeInfo.narrativeMap.get(fullIdx);
@@ -759,18 +794,20 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                   ? getNarrativeChars(fullIdx, metricCommentLines)
                   : { line1Chars: 0, line2Chars: 0, typingLine1: false, typingLine2: false };
 
+                const highlightBg = isHighlighted
+                  ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
+                  : "transparent";
                 const commentLineStyle: React.CSSProperties = {
                   display: "flex",
                   minHeight: lineHeight,
-                  background: isHighlighted
-                    ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
-                    : "transparent",
+                  background: highlightBg,
                   borderRadius: 2,
                 };
+                const lineNumWidth_ch = `${String(codeLines.length).length + 1}ch`;
                 const lineNumBlank = config.showLineNumbers ? (
                   <span style={{
                     color: theme.lineNumber,
-                    width: `${String(codeLines.length).length + 1}ch`,
+                    width: lineNumWidth_ch,
                     textAlign: "right",
                     paddingRight: 24,
                     userSelect: "none",
@@ -800,36 +837,61 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                       </div>
                     )}
 
-                    {/* Code line */}
-                    <div style={{
-                      display: "flex",
-                      minHeight: lineHeight,
-                      background: isHighlighted
-                        ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
-                        : "transparent",
-                      borderRadius: 2,
-                    }}>
-                      {config.showLineNumbers && (
-                        <span style={{
-                          color: theme.lineNumber,
-                          width: `${String(codeLines.length).length + 1}ch`,
-                          textAlign: "right",
-                          paddingRight: 24,
-                          userSelect: "none",
-                          flexShrink: 0,
+                    {/* Code line — intro comments rendered wrapped if they have 2 lines */}
+                    {isIntroComment && introWrappedLines && introWrappedLines.length > 1 ? (
+                      introWrappedLines.map((wrappedLine, wIdx) => (
+                        <div key={wIdx} style={{
+                          display: "flex",
+                          minHeight: lineHeight,
+                          background: highlightBg,
+                          borderRadius: 2,
                         }}>
-                          {visualIdx + 1}
-                        </span>
-                      )}
-                      <span style={{
-                        flex: 1,
-                        filter: isHighlighted ? "brightness(1.4)" : undefined,
+                          {config.showLineNumbers && (
+                            <span style={{
+                              color: theme.lineNumber,
+                              width: lineNumWidth_ch,
+                              textAlign: "right",
+                              paddingRight: 24,
+                              userSelect: "none",
+                              flexShrink: 0,
+                            }}>
+                              {wIdx === 0 ? visualIdx + 1 : ""}
+                            </span>
+                          )}
+                          <span style={{ flex: 1, filter: isHighlighted ? "brightness(1.4)" : undefined }}>
+                            <span style={{ color: theme.comment }}>{wrappedLine}</span>
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{
+                        display: "flex",
+                        minHeight: lineHeight,
+                        background: highlightBg,
+                        borderRadius: 2,
                       }}>
-                        {lineTokens.map((t, ti) => (
-                          <span key={ti} style={{ color: colorFor(t.type) }}>{t.text}</span>
-                        ))}
-                      </span>
-                    </div>
+                        {config.showLineNumbers && (
+                          <span style={{
+                            color: theme.lineNumber,
+                            width: lineNumWidth_ch,
+                            textAlign: "right",
+                            paddingRight: 24,
+                            userSelect: "none",
+                            flexShrink: 0,
+                          }}>
+                            {visualIdx + 1}
+                          </span>
+                        )}
+                        <span style={{
+                          flex: 1,
+                          filter: isHighlighted ? "brightness(1.4)" : undefined,
+                        }}>
+                          {lineTokens.map((t, ti) => (
+                            <span key={ti} style={{ color: colorFor(t.type) }}>{t.text}</span>
+                          ))}
+                        </span>
+                      </div>
+                    )}
                   </React.Fragment>
                 );
               })}

@@ -84,6 +84,11 @@ export interface SnippetConfig {
   backgroundImageDataUrl: string | null;
   backgroundImageName: string | null;
   backgroundImageOverlay: number; // 0..1 — dark overlay opacity
+  // title styling
+  titleColor: string;
+  titleBgEnabled: boolean;
+  titleBgColor: string;
+  titleBgOpacity: number; // 0..1
   // sound effects
   sfxEnabled: boolean;
   sfxVolume: number; // 0..1 — master volume for all SFX
@@ -143,6 +148,10 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   showCursor: true,
   title: "Quicksort en Python",
   showTitle: true,
+  titleColor: "#ffffff",
+  titleBgEnabled: false,
+  titleBgColor: "#000000",
+  titleBgOpacity: 0.55,
   brandHandle: "@ayrtonnacer",
   scanEnabled: true,
   scanSpeed: 3.0,
@@ -185,6 +194,8 @@ export interface LinePanTiming {
   commentLine1Frames: number;
   commentTypingFrames: number;
   commentHoldFrames: number;
+  /** Wrapped lines for intro comment lines (typed in Act 1, wrapped in Act 2 scan) */
+  introWrappedLines?: string[];
 }
 
 export interface NarrativeOpts {
@@ -196,7 +207,8 @@ export interface NarrativeOpts {
 export function computeLinePanTimings(
   cfg: SnippetConfig,
   narrativeMap?: Map<number, string>,
-  narrativeLineIndices?: Set<number>
+  narrativeLineIndices?: Set<number>,
+  introLineIndices?: Set<number>
 ): LinePanTiming[] {
   const charWidth      = cfg.fontSize * 0.6;
   const visibleWidth   = VIDEO_WIDTH / Math.max(1, cfg.scanZoom);
@@ -210,10 +222,45 @@ export function computeLinePanTimings(
   return lines.map((line, idx) => {
     // Narrative comment lines are skipped by the scanner
     if (narrativeLineIndices?.has(idx)) {
-      return { scrollDist: 0, readFrames: 0, commentTypingFrames: 0, commentHoldFrames: 0 };
+      return { scrollDist: 0, readFrames: 0, commentLines: [], commentLine1Frames: 0, commentTypingFrames: 0, commentHoldFrames: 0 };
     }
 
-    const lineContentEnd = xCodeLeft + lineNumWidth + line.trimEnd().length * charWidth;
+    // For intro comment lines, wrap them and use the longest wrapped line for camera positioning
+    let introWrappedLines: string[] | undefined;
+    if (introLineIndices?.has(idx)) {
+      const t = line.trim();
+      const prefixLen = (cfg.language === "python" || cfg.language === "ruby" || cfg.language === "bash") ? 2
+        : cfg.language === "sql" ? 3 : cfg.language === "html" ? 5 : 3;
+      const prefix = (() => {
+        switch (cfg.language) {
+          case "python": case "ruby": case "bash": return t.match(/^#+\s?/)?.[0] ?? "# ";
+          case "sql":  return t.match(/^--\s?/)?.[0] ?? "-- ";
+          case "html": return t.match(/^<!--\s?/)?.[0] ?? "<!-- ";
+          case "css":  return t.match(/^\/\*+\s?/)?.[0] ?? "/* ";
+          default:     return t.match(/^\/\/+\s?/)?.[0] ?? "// ";
+        }
+      })();
+      const stripped = t.slice(prefix.length).replace(/\s?(-->|\*\/)$/, "");
+      const maxChars = Math.max(15,
+        Math.floor((visibleWidth * 1.5 - xCodeLeft - lineNumWidth) / charWidth) - prefixLen
+      );
+      if (stripped.length > maxChars) {
+        const breakIdx = stripped.lastIndexOf(" ", maxChars);
+        const splitAt  = breakIdx > 0 ? breakIdx : maxChars;
+        introWrappedLines = [
+          prefix + stripped.slice(0, splitAt).trimEnd(),
+          prefix + stripped.slice(splitAt).trimStart(),
+        ];
+      } else {
+        introWrappedLines = [t];
+      }
+    }
+
+    // Use longest wrapped intro line length for camera; otherwise use full line
+    const effectiveLen = introWrappedLines
+      ? introWrappedLines.reduce((a, b) => Math.max(a, b.trimEnd().length), 0)
+      : line.trimEnd().length;
+    const lineContentEnd = xCodeLeft + lineNumWidth + effectiveLen * charWidth;
     const idealTx    = visibleWidth - lineContentEnd;
     const targetTx   = Math.min(idealTx, -xCodeLeft);
     const scrollDist = Math.abs(-xCodeLeft - targetTx);
@@ -259,7 +306,7 @@ export function computeLinePanTimings(
       commentHoldFrames = SCAN_COMMENT_HOLD_FRAMES;
     }
 
-    return { scrollDist, readFrames, commentLines, commentLine1Frames, commentTypingFrames, commentHoldFrames };
+    return { scrollDist, readFrames, commentLines, commentLine1Frames, commentTypingFrames, commentHoldFrames, introWrappedLines };
   });
 }
 
