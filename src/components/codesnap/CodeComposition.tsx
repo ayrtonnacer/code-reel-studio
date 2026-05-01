@@ -161,9 +161,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const cursorVisible = Math.floor(frame / (fps * 0.5)) % 2 === 0;
 
-  // ── Intro animation ───────────────────────────────────────────────────────
-  const introOpacity = interpolate(frame, [0, 18], [0, 1], { extrapolateRight: "clamp" });
-  const introScale   = interpolate(frame, [0, 22], [0.96, 1], { extrapolateRight: "clamp" });
+  // ── Intro animation — card fades in after startDelay so background image
+  //    is visible alone first ───────────────────────────────────────────────
+  const introDelay   = Math.round(config.startDelay * fps);
+  const introOpacity = interpolate(frame, [introDelay, introDelay + 18], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const introScale   = interpolate(frame, [introDelay, introDelay + 22], [0.96, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   // ── Colors ────────────────────────────────────────────────────────────────
   const colorFor = (type: string): string => {
@@ -221,12 +223,13 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       const targetTx = Math.min(idealTx, Tx_left);
       const scrollDist = Math.abs(Tx_left - targetTx);
 
-      // Calculate how far left the camera must go to show the full comment text
-      const commentText = narrativeInfo.narrativeMap.get(fullIdx);
+      // Use split comment lines from panTimings for camera positioning
+      const commentLines = panTimings[fullIdx]?.commentLines ?? [];
       let commentTargetTx = targetTx;
-      if (commentText) {
+      if (commentLines.length > 0) {
         const commentPrefix = getCommentLinePrefix(config.language);
-        const commentLen = commentPrefix.length + commentText.length;
+        const longestLine   = commentLines.reduce((a, b) => a.length >= b.length ? a : b, "");
+        const commentLen    = commentPrefix.length + longestLine.length;
         const commentContentEnd = xCodeLeft + lineNumWidth + commentLen * charWidth;
         const idealCommentTx = visibleWidth - commentContentEnd;
         commentTargetTx = Math.min(idealCommentTx, Tx_left);
@@ -236,23 +239,25 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       const absY   = codeAreaTop + visualIdx * lineHeight - scroll;
       const Ty     = height / 2 - absY;
 
-      return { fullIdx, targetTx, commentTargetTx, scrollDist, Ty, scroll: -scroll };
+      return { fullIdx, targetTx, commentTargetTx, scrollDist, Ty, scroll: -scroll, commentLines };
     });
-  }, [nonNarrativeCodeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height, narrativeInfo, config.language]);
+  }, [nonNarrativeCodeLines, SCAN_ZOOM, width, charWidth, lineNumWidth, xCodeLeft, Tx_left, maxVisibleLines, lineHeight, codeAreaTop, height, panTimings, config.language]);
 
   // ── lineSchedules — one entry per non-narrative line ─────────────────────
   const { lineSchedules, dynamicScanFrames } = useMemo(() => {
     let cursor = 0;
     const schedules = lineMetrics.map((m, schedIdx) => {
-      const timing = panTimings[m.fullIdx] ?? { readFrames: SCAN_BASE_READ_FRAMES, commentTypingFrames: 0, commentHoldFrames: 0 };
-      const start      = cursor;
-      const arriveEnd  = start + timing.readFrames;
-      const commentEnd = arriveEnd + timing.commentTypingFrames;
-      const holdEnd    = commentEnd + timing.commentHoldFrames;
-      const isLast     = schedIdx === lineMetrics.length - 1;
-      const snapEnd    = isLast ? holdEnd : holdEnd + SCAN_SNAP_FRAMES;
+      const timing = panTimings[m.fullIdx] ?? { readFrames: SCAN_BASE_READ_FRAMES, commentLine1Frames: 0, commentTypingFrames: 0, commentHoldFrames: 0 };
+      const start             = cursor;
+      const arriveEnd         = start + timing.readFrames;
+      // commentLine2Start = when line 1 typing ends (= commentEnd for single-line comments)
+      const commentLine2Start = arriveEnd + (timing.commentLine1Frames ?? timing.commentTypingFrames);
+      const commentEnd        = arriveEnd + timing.commentTypingFrames;
+      const holdEnd           = commentEnd + timing.commentHoldFrames;
+      const isLast            = schedIdx === lineMetrics.length - 1;
+      const snapEnd           = isLast ? holdEnd : holdEnd + SCAN_SNAP_FRAMES;
       cursor = snapEnd;
-      return { fullIdx: m.fullIdx, start, arriveEnd, commentEnd, holdEnd, snapEnd };
+      return { fullIdx: m.fullIdx, start, arriveEnd, commentLine2Start, commentEnd, holdEnd, snapEnd };
     });
     return { lineSchedules: schedules, dynamicScanFrames: cursor };
   }, [lineMetrics, panTimings]);
@@ -318,16 +323,21 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           inLineFrame, [0, Math.max(1, sched.arriveEnd - sched.start)],
           [panStartX, curr.targetTx], easeOut
         );
-      } else if (scanFrame < sched.commentEnd) {
-        // Typing the comment — pan linearly so camera tracks each character
+      } else if (scanFrame < sched.commentLine2Start) {
+        // Line 1 typing — pan linearly from code end to comment end
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
-        const commentFrame = scanFrame - sched.arriveEnd;
-        const commentDuration = Math.max(1, sched.commentEnd - sched.arriveEnd);
+        const commentFrame    = scanFrame - sched.arriveEnd;
+        const line1Duration   = Math.max(1, sched.commentLine2Start - sched.arriveEnd);
         sceneTranslateX  = interpolate(
-          commentFrame, [0, commentDuration],
+          commentFrame, [0, line1Duration],
           [curr.targetTx, curr.commentTargetTx], clamp
         );
+      } else if (scanFrame < sched.commentEnd) {
+        // Line 2 typing — camera holds at commentTargetTx while second line types
+        effectiveScrollY = curr.scroll;
+        sceneTranslateY  = curr.Ty;
+        sceneTranslateX  = curr.commentTargetTx;
       } else if (scanFrame < sched.holdEnd) {
         // Comment done — hold with camera at commentTargetTx
         effectiveScrollY = curr.scroll;
@@ -374,18 +384,32 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   }
 
   // ── Narrative comment typing (inline mode) ────────────────────────────────
-  // Returns how many chars of the comment for a given codeLineIdx have been revealed
-  const getNarrativeChars = (codeLineFullIdx: number): { chars: number; typing: boolean } => {
-    if (!config.scanEnabled || frame < panStartFrame || frame >= panEndFrame) return { chars: 0, typing: false };
+  const getNarrativeChars = (codeLineFullIdx: number, metricLines: string[]): {
+    line1Chars: number; line2Chars: number;
+    typingLine1: boolean; typingLine2: boolean;
+    totalChars: number; isTyping: boolean;
+  } => {
+    const none = { line1Chars: 0, line2Chars: 0, typingLine1: false, typingLine2: false, totalChars: 0, isTyping: false };
+    if (!config.scanEnabled || frame < panStartFrame || frame >= panEndFrame) return none;
     const sched = schedByFullIdx.get(codeLineFullIdx);
-    if (!sched) return { chars: 0, typing: false };
-    const commentText = narrativeInfo.narrativeMap.get(codeLineFullIdx) ?? "";
-    if (!commentText) return { chars: 0, typing: false };
+    if (!sched || metricLines.length === 0) return none;
     const scanFrame = frame - panStartFrame;
-    if (scanFrame < sched.arriveEnd) return { chars: 0, typing: false };
-    const commentScanFrame = scanFrame - sched.arriveEnd;
-    const chars = Math.min(commentText.length, Math.floor(commentScanFrame / fps * config.typingSpeed));
-    return { chars, typing: chars < commentText.length };
+    if (scanFrame < sched.arriveEnd) return none;
+
+    const line1Text = metricLines[0] ?? "";
+    const line2Text = metricLines[1] ?? "";
+
+    if (scanFrame < sched.commentLine2Start) {
+      const commentScanFrame = scanFrame - sched.arriveEnd;
+      const line1Chars = Math.min(line1Text.length, Math.floor(commentScanFrame / fps * config.typingSpeed));
+      return { line1Chars, line2Chars: 0, typingLine1: line1Chars < line1Text.length, typingLine2: false, totalChars: line1Chars, isTyping: line1Chars < line1Text.length };
+    } else if (scanFrame < sched.commentEnd) {
+      const line2ScanFrame = scanFrame - sched.commentLine2Start;
+      const line2Chars = Math.min(line2Text.length, Math.floor(line2ScanFrame / fps * config.typingSpeed));
+      return { line1Chars: line1Text.length, line2Chars, typingLine1: false, typingLine2: line2Chars < line2Text.length, totalChars: line1Text.length + line2Chars, isTyping: line2Chars < line2Text.length };
+    } else {
+      return { line1Chars: line1Text.length, line2Chars: line2Text.length, typingLine1: false, typingLine2: false, totalChars: line1Text.length + line2Text.length, isTyping: false };
+    }
   };
 
   // Subtitle text (when commentStyle === "subtitle")
@@ -398,10 +422,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       const sched = lineSchedules[si];
       if (scanFrame >= sched.arriveEnd && scanFrame < sched.holdEnd) {
         const commentText = narrativeInfo.narrativeMap.get(sched.fullIdx) ?? "";
-        if (commentText) {
-          const { chars, typing } = getNarrativeChars(sched.fullIdx);
-          subtitleText = commentText.slice(0, chars);
-          isTypingSubtitle = typing;
+        const metricLines = lineMetrics[si]?.commentLines ?? [];
+        if (commentText && metricLines.length > 0) {
+          const { totalChars, isTyping } = getNarrativeChars(sched.fullIdx, metricLines);
+          subtitleText = commentText.slice(0, totalChars);
+          isTypingSubtitle = isTyping;
         }
       }
     }
@@ -729,39 +754,48 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
                 // Narrative comment for this code line (inline mode)
                 const narrativeText = narrativeInfo.narrativeMap.get(fullIdx);
-                const { chars: narChars, typing: narTyping } = narrativeText
-                  ? getNarrativeChars(fullIdx)
-                  : { chars: 0, typing: false };
+                const metricCommentLines = lineMetrics[visualIdx]?.commentLines ?? [];
+                const { line1Chars, line2Chars, typingLine1, typingLine2 } = narrativeText
+                  ? getNarrativeChars(fullIdx, metricCommentLines)
+                  : { line1Chars: 0, line2Chars: 0, typingLine1: false, typingLine2: false };
+
+                const commentLineStyle: React.CSSProperties = {
+                  display: "flex",
+                  minHeight: lineHeight,
+                  background: isHighlighted
+                    ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
+                    : "transparent",
+                  borderRadius: 2,
+                };
+                const lineNumBlank = config.showLineNumbers ? (
+                  <span style={{
+                    color: theme.lineNumber,
+                    width: `${String(codeLines.length).length + 1}ch`,
+                    textAlign: "right",
+                    paddingRight: 24,
+                    userSelect: "none",
+                    flexShrink: 0,
+                  }} />
+                ) : null;
 
                 return (
                   <React.Fragment key={fullIdx}>
                     {/* Narrative comment — appears above the code line, inline style */}
-                    {config.commentStyle === "inline" && narrativeText && narChars > 0 && (
-                      <div style={{
-                        display: "flex",
-                        minHeight: lineHeight,
-                        background: isHighlighted
-                          ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
-                          : "transparent",
-                        borderRadius: 2,
-                      }}>
-                        {config.showLineNumbers && (
-                          <span style={{
-                            color: theme.lineNumber,
-                            width: `${String(codeLines.length).length + 1}ch`,
-                            textAlign: "right",
-                            paddingRight: 24,
-                            userSelect: "none",
-                            flexShrink: 0,
-                          }} />
-                        )}
-                        <span style={{
-                          flex: 1,
-                          color: theme.comment,
-                          filter: isHighlighted ? "brightness(1.4)" : undefined,
-                        }}>
-                          {commentPrefix}{narrativeText.slice(0, narChars)}
-                          {narTyping && config.showCursor && cursor}
+                    {config.commentStyle === "inline" && narrativeText && line1Chars > 0 && (
+                      <div style={commentLineStyle}>
+                        {lineNumBlank}
+                        <span style={{ flex: 1, color: theme.comment, filter: isHighlighted ? "brightness(1.4)" : undefined }}>
+                          {commentPrefix}{metricCommentLines[0]?.slice(0, line1Chars) ?? ""}
+                          {typingLine1 && config.showCursor && cursor}
+                        </span>
+                      </div>
+                    )}
+                    {config.commentStyle === "inline" && narrativeText && line2Chars > 0 && (
+                      <div style={commentLineStyle}>
+                        {lineNumBlank}
+                        <span style={{ flex: 1, color: theme.comment, filter: isHighlighted ? "brightness(1.4)" : undefined }}>
+                          {commentPrefix}{metricCommentLines[1]?.slice(0, line2Chars) ?? ""}
+                          {typingLine2 && config.showCursor && cursor}
                         </span>
                       </div>
                     )}

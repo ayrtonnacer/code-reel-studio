@@ -138,7 +138,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   showLineNumbers: false,
   windowChrome: true,
   typingSpeed: 30,
-  startDelay: 0.4,
+  startDelay: 1.2,
   holdEnd: 5,
   showCursor: true,
   title: "Quicksort en Python",
@@ -180,7 +180,9 @@ export const SCAN_COMMENT_HOLD_FRAMES = Math.round(FPS * 0.7);
 export interface LinePanTiming {
   scrollDist: number;
   readFrames: number;
-  commentText?: string;
+  /** Split comment lines (0 = no comment, 1 = short, 2 = wrapped long comment) */
+  commentLines: string[];
+  commentLine1Frames: number;
   commentTypingFrames: number;
   commentHoldFrames: number;
 }
@@ -218,12 +220,46 @@ export function computeLinePanTimings(
     const readFrames = SCAN_BASE_READ_FRAMES + Math.round(scrollDist / pixelsPerFrame);
 
     const commentText = narrativeMap?.get(idx);
-    const commentTypingFrames = commentText
-      ? Math.ceil(commentText.length / Math.max(1, cfg.typingSpeed) * FPS)
-      : 0;
-    const commentHoldFrames = commentText ? SCAN_COMMENT_HOLD_FRAMES : 0;
+    let commentLines: string[] = [];
+    let commentLine1Frames = 0;
+    let commentTypingFrames = 0;
+    let commentHoldFrames = 0;
 
-    return { scrollDist, readFrames, commentText, commentTypingFrames, commentHoldFrames };
+    if (commentText) {
+      // Inline prefix length for splitting (mirrors getCommentLinePrefix)
+      const prefixLen = (() => {
+        switch (cfg.language) {
+          case "python": case "ruby": case "bash": return 2; // "# "
+          case "sql": return 3;                              // "-- "
+          case "html": return 5;                             // "<!-- "
+          case "css": return 3;                              // "/* "
+          default: return 3;                                 // "// "
+        }
+      })();
+      // Wrap at ~1.5× visible width minus left margin and prefix
+      const maxChars = Math.max(15,
+        Math.floor((visibleWidth * 1.5 - xCodeLeft - lineNumWidth) / charWidth) - prefixLen
+      );
+
+      if (commentText.length <= maxChars) {
+        commentLines = [commentText];
+      } else {
+        const breakIdx = commentText.lastIndexOf(" ", maxChars);
+        const splitAt  = breakIdx > 0 ? breakIdx : maxChars;
+        commentLines = [
+          commentText.slice(0, splitAt).trimEnd(),
+          commentText.slice(splitAt).trimStart(),
+        ];
+      }
+
+      commentLine1Frames = Math.ceil(commentLines[0].length / Math.max(1, cfg.typingSpeed) * FPS);
+      commentTypingFrames = commentLines.reduce(
+        (sum, l) => sum + Math.ceil(l.length / Math.max(1, cfg.typingSpeed) * FPS), 0
+      );
+      commentHoldFrames = SCAN_COMMENT_HOLD_FRAMES;
+    }
+
+    return { scrollDist, readFrames, commentLines, commentLine1Frames, commentTypingFrames, commentHoldFrames };
   });
 }
 
