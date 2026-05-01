@@ -196,9 +196,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const panStartFrame  = zoomInEndFrame;
 
   // The X position where the camera lands after zoom-in and from which every
-  // line's rightward pan starts. A bit more left than Tx_left so the code
-  // start is fully visible on entry.
-  const panStartX = Tx_left - charWidth * 3;
+  // line's rightward pan starts. Exactly at the code's left edge so the
+  // beginning of every line is always visible on entry.
+  const panStartX = Tx_left;
 
   const isAct1 = frame < scanStartFrame;
 
@@ -319,14 +319,14 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           [panStartX, curr.targetTx], easeOut
         );
       } else if (scanFrame < sched.commentEnd) {
-        // Typing the comment — pan from code targetTx toward commentTargetTx
+        // Typing the comment — pan linearly so camera tracks each character
         effectiveScrollY = curr.scroll;
         sceneTranslateY  = curr.Ty;
         const commentFrame = scanFrame - sched.arriveEnd;
         const commentDuration = Math.max(1, sched.commentEnd - sched.arriveEnd);
         sceneTranslateX  = interpolate(
           commentFrame, [0, commentDuration],
-          [curr.targetTx, curr.commentTargetTx], easeOut
+          [curr.targetTx, curr.commentTargetTx], clamp
         );
       } else if (scanFrame < sched.holdEnd) {
         // Comment done — hold with camera at commentTargetTx
