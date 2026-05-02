@@ -3,12 +3,18 @@ import { toCanvas } from "html-to-image";
 import {
   computeDurationFrames,
   computeVideoTimings,
+  computeLinePanTimings,
   FPS,
-  VIDEO_HEIGHT,
   VIDEO_WIDTH,
+  VIDEO_HEIGHT,
+  SCAN_SNAP_FRAMES,
+  SCAN_ZOOM_FRAMES,
+  SCAN_PRE_PAUSE_FRAMES,
   type SnippetConfig,
+  type NarrativeOpts,
 } from "@/lib/codesnap-types";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
+import { parseNarrative, autoWrapCode } from "@/lib/codesnap-narrative";
 
 export type ExportFormat = "webm" | "mp4";
 
@@ -153,7 +159,7 @@ async function mixAudioBuffers(
   return { channels, sampleRate };
 }
 
-function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSource[] {
+function buildAudioSources(config: SnippetConfig, totalFrames: number, narrativeOpts: NarrativeOpts): AudioSource[] {
   const sources: AudioSource[] = [];
   const totalSec = totalFrames / FPS;
 
@@ -178,7 +184,9 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
   // Sound effects
   if (config.sfxEnabled) {
     const sfxVol = config.sfxVolume ?? 1;
-    const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec, outroStartSec, outroEndSec } = computeVideoTimings(config);
+    const isHighlightStatic = config.scanMode !== "zoom-pan";
+    const { typingStartSec, typingEndSec, zoomInStartSec, zoomOutStartSec, outroStartSec, outroEndSec } =
+      computeVideoTimings(config, narrativeOpts);
 
     // Mouse click at video start
     sources.push({ dataUrl: SFX_START_CLICK, volume: 0.75 * sfxVol, fadeOut: 0, startTime: 0 });
@@ -193,14 +201,41 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number): AudioSou
       loop: true,
     });
 
-    // Zoom-in click
-    if (isFinite(zoomInStartSec)) {
-      sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomInStartSec });
+    // Zoom-in/out SFX — only in zoom-pan mode
+    if (!isHighlightStatic) {
+      if (isFinite(zoomInStartSec)) {
+        sources.push({ dataUrl: SFX_ZOOM_IN, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomInStartSec });
+      }
+      if (isFinite(zoomOutStartSec)) {
+        sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomOutStartSec });
+      }
     }
 
-    // Zoom-out click
-    if (isFinite(zoomOutStartSec)) {
-      sources.push({ dataUrl: SFX_ZOOM_OUT, volume: 0.75 * sfxVol, fadeOut: 0, startTime: zoomOutStartSec });
+    // Typing click loop — narrative comments during scan
+    if (config.scanEnabled) {
+      const modeZoomFrames = isHighlightStatic ? 0 : SCAN_ZOOM_FRAMES;
+      const panStartSec = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS + modeZoomFrames / FPS;
+      const panTimings = computeLinePanTimings(config, narrativeOpts.narrativeMap, narrativeOpts.narrativeLineIndices);
+      const nonNarrativeTimings = panTimings.filter(t => t.readFrames > 0);
+      let sfxCursor = 0;
+      for (let i = 0; i < nonNarrativeTimings.length; i++) {
+        const t = nonNarrativeTimings[i];
+        const arriveEnd = sfxCursor + t.readFrames;
+        const commentEnd = arriveEnd + t.commentTypingFrames;
+        const holdEnd = commentEnd + t.commentHoldFrames;
+        const isLast = i === nonNarrativeTimings.length - 1;
+        sfxCursor = isLast ? holdEnd : holdEnd + SCAN_SNAP_FRAMES;
+        if (t.commentTypingFrames > 0) {
+          sources.push({
+            dataUrl: SFX_TYPE_CLICK,
+            volume: 0.50 * sfxVol,
+            fadeOut: 0,
+            startTime: panStartSec + arriveEnd / FPS,
+            endTime: panStartSec + commentEnd / FPS,
+            loop: true,
+          });
+        }
+      }
     }
 
     // Typing click loop — outro CTA
@@ -245,6 +280,7 @@ async function encodeWebm(
   getFrameElement: () => HTMLElement | null,
   setFrame: (frame: number) => Promise<void>,
   config: SnippetConfig,
+  narrativeOpts: NarrativeOpts,
   onProgress: (current: number, message: string) => void
 ): Promise<Blob> {
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
@@ -267,7 +303,7 @@ async function encodeWebm(
   const canvasStream = canvas.captureStream(FPS);
   const tracks: MediaStreamTrack[] = [...canvasStream.getVideoTracks()];
 
-  const audioSources = buildAudioSources(config, totalFrames);
+  const audioSources = buildAudioSources(config, totalFrames, narrativeOpts);
   const audioResult = await buildAudioTracks(audioSources, totalFrames);
   if (audioResult) {
     audioResult.tracks.forEach((t) => tracks.push(t));
@@ -304,11 +340,12 @@ async function encodeMp4(
   getFrameElement: () => HTMLElement | null,
   setFrame: (frame: number) => Promise<void>,
   config: SnippetConfig,
+  narrativeOpts: NarrativeOpts,
   onProgress: (current: number, message: string) => void
 ): Promise<Blob> {
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
 
-  const audioSources = buildAudioSources(config, totalFrames);
+  const audioSources = buildAudioSources(config, totalFrames, narrativeOpts);
   const mixedAudio = audioSources.length > 0 ? await mixAudioBuffers(audioSources, totalFrames) : null;
 
   const target = new ArrayBufferTarget();
@@ -408,14 +445,29 @@ export function useVideoExport() {
     ): Promise<void> => {
       const ext = format === "mp4" ? "mp4" : "webm";
       try {
-        const totalFrames = computeDurationFrames(config);
+        // Compute narrative opts once so all audio timing is in sync with the renderer
+        const narrativeInfo = parseNarrative(config.code, config.language);
+        const charWidth = config.fontSize * 0.6;
+        const lineNumWidth = config.showLineNumbers
+          ? (String(config.code.split("\n").length).length + 1) * charWidth + 24
+          : 0;
+        const codeAreaWidth = (VIDEO_WIDTH - config.padding * 2) - config.padding * 2;
+        const maxCharsPerLine = Math.max(20, Math.floor((codeAreaWidth - lineNumWidth) / charWidth));
+        const wrappedAct1Code = autoWrapCode(narrativeInfo.act1Code, maxCharsPerLine);
+        const narrativeOpts: NarrativeOpts = {
+          act1CodeLength: wrappedAct1Code.length,
+          narrativeMap: narrativeInfo.narrativeMap,
+          narrativeLineIndices: narrativeInfo.narrativeLineIndices,
+        };
+
+        const totalFrames = computeDurationFrames(config, narrativeOpts);
 
         setProgress({ phase: "rendering-frames", current: 0, total: totalFrames, message: "Rendering...", blobUrl: null, fileExt: ext });
 
         const blob =
           format === "mp4"
-            ? await encodeMp4(totalFrames, getFrameElement, setFrame, config, (current, message) => setProgress((p) => ({ ...p, current, message })))
-            : await encodeWebm(totalFrames, getFrameElement, setFrame, config, (current, message) => setProgress((p) => ({ ...p, current, message })));
+            ? await encodeMp4(totalFrames, getFrameElement, setFrame, config, narrativeOpts, (current, message) => setProgress((p) => ({ ...p, current, message })))
+            : await encodeWebm(totalFrames, getFrameElement, setFrame, config, narrativeOpts, (current, message) => setProgress((p) => ({ ...p, current, message })));
 
         const blobUrl = URL.createObjectURL(blob);
         setProgress({ phase: "done", current: totalFrames, total: totalFrames, message: "Done!", blobUrl, fileExt: ext });

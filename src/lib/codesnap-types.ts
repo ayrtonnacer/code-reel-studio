@@ -77,6 +77,8 @@ export interface SnippetConfig {
   scanZoom: number;  // zoom multiplier during scan (e.g. 7 = very aggressive)
   // narrative comments style during scan
   commentStyle: "inline" | "subtitle";
+  // scan camera mode
+  scanMode: "highlight-static" | "zoom-pan";
   // outro / CTA text typed after scan
   outroEnabled: boolean;
   outroText: string;
@@ -86,6 +88,7 @@ export interface SnippetConfig {
   backgroundImageOverlay: number; // 0..1 — dark overlay opacity
   // title styling
   titleColor: string;
+  titleFontSize: number;
   titleBgEnabled: boolean;
   titleBgColor: string;
   titleBgOpacity: number; // 0..1
@@ -149,6 +152,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   title: "Quicksort en Python",
   showTitle: true,
   titleColor: "#ffffff",
+  titleFontSize: 58,
   titleBgEnabled: false,
   titleBgColor: "#000000",
   titleBgOpacity: 0.55,
@@ -157,6 +161,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   scanSpeed: 3.0,
   scanZoom: 2.5,
   commentStyle: "inline",
+  scanMode: "highlight-static",
   outroEnabled: false,
   outroText: "",
   backgroundImageDataUrl: null,
@@ -326,7 +331,8 @@ export function computeDurationFrames(cfg: SnippetConfig, narrativeOpts?: Narrat
       ? panTimings.filter(t => t.readFrames > 0).length
       : panTimings.length;
 
-    const scanFrames = SCAN_ZOOM_FRAMES * 2
+    const zoomFrames = cfg.scanMode === "zoom-pan" ? SCAN_ZOOM_FRAMES * 2 : 0;
+    const scanFrames = zoomFrames
       + panTimings.reduce((sum, t) => sum + t.readFrames + t.commentTypingFrames + t.commentHoldFrames, 0)
       + SCAN_SNAP_FRAMES * Math.max(0, nonNarrativeCount - 1);
     scanSec = SCAN_PRE_PAUSE_FRAMES / FPS + scanFrames / FPS;
@@ -371,9 +377,12 @@ export function computeVideoTimings(cfg: SnippetConfig, narrativeOpts?: Narrativ
       (sum, t) => sum + t.readFrames + t.commentTypingFrames + t.commentHoldFrames, 0
     ) + SCAN_SNAP_FRAMES * Math.max(0, nonNarrativeCount - 1);
 
-    zoomInStartSec  = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS;
-    zoomOutStartSec = zoomInStartSec + SCAN_ZOOM_FRAMES / FPS + panFrames / FPS;
-    outroStartSec   = zoomOutStartSec + SCAN_ZOOM_FRAMES / FPS;
+    const modeZoomFrames = cfg.scanMode === "zoom-pan" ? SCAN_ZOOM_FRAMES : 0;
+    zoomInStartSec  = cfg.scanMode === "zoom-pan" ? typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS : Infinity;
+    zoomOutStartSec = cfg.scanMode === "zoom-pan"
+      ? typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS + modeZoomFrames / FPS + panFrames / FPS
+      : Infinity;
+    outroStartSec   = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS + modeZoomFrames / FPS + panFrames / FPS + modeZoomFrames / FPS;
   }
 
   const outroEndSec = cfg.outroEnabled && cfg.outroText.length > 0

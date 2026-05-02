@@ -32,6 +32,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const isY2K = config.theme === 'chrome-y2k';
   const isLightBg = config.background === 'chrome-flat' || config.background === 'paper-noise'
     || config.background === 'custom-gradient' || !!config.backgroundImageDataUrl;
+  const isHighlightStatic = config.scanMode !== "zoom-pan";
 
   // ── Narrative parsing ────────────────────────────────────────────────────
   const narrativeInfo = useMemo(
@@ -53,13 +54,41 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     [codeLines, narrativeInfo]
   );
 
+  // ── Pan timings — computed early so cardH can account for comment lines ──
+  const panTimings = useMemo(
+    () => computeLinePanTimings(
+      config,
+      narrativeInfo.narrativeMap,
+      narrativeInfo.narrativeLineIndices,
+      narrativeInfo.introLineIndices
+    ),
+    [config, narrativeInfo]
+  );
+
+  // Count extra lines visible in Act 2 that aren't in Act 1
+  const totalNarrCommentLinesForCard = config.commentStyle === "inline"
+    ? nonNarrativeCodeLines.reduce((sum, { fullIdx }) =>
+        sum + (panTimings[fullIdx]?.commentLines?.length ?? 0), 0)
+    : 0;
+  const totalWrappedIntroLinesForCard = nonNarrativeCodeLines.reduce((sum, { fullIdx }) => {
+    const intro = panTimings[fullIdx]?.introWrappedLines;
+    return sum + (intro && intro.length > 1 ? intro.length - 1 : 0);
+  }, 0);
+  const outroLineForCard = config.outroEnabled && config.outroText.length > 0 ? 1 : 0;
+  const act2TotalLinesForCard = nonNarrativeCodeLines.length
+    + totalNarrCommentLinesForCard + totalWrappedIntroLinesForCard + outroLineForCard;
+
   // ── Act 1: typed code = act1Code with long lines auto-wrapped ───────────
   const lineHeight = config.fontSize * 1.45;
   const chromeH    = config.windowChrome ? 46 : 0;
-  const cardH      = Math.min(
-    nonNarrativeCodeLines.length * lineHeight + config.padding * 2 + chromeH,
-    height - 420
-  );
+  // Card sized for all Act 2 content. In highlight-static mode the card
+  // shows everything at once; a CSS scale keeps it within the frame.
+  const naturalCardH = act2TotalLinesForCard * lineHeight + config.padding * 2 + chromeH;
+  const maxCardDisplayH = height - 260;
+  const codeCardScale = isHighlightStatic && naturalCardH > maxCardDisplayH
+    ? maxCardDisplayH / naturalCardH
+    : 1;
+  const cardH = isHighlightStatic ? naturalCardH : Math.min(naturalCardH, height - 420);
   const cardTop    = (height - cardH) / 2;
   const codeAreaTop = cardTop + chromeH + config.padding;
 
@@ -183,6 +212,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   // ── Scan timing constants ─────────────────────────────────────────────────
   const SCAN_ZOOM = config.scanZoom;
+  const zoomFrames = isHighlightStatic ? 0 : SCAN_ZOOM_FRAMES;
   const xCodeLeft = config.padding * 2;
   const Tx_left   = -xCodeLeft;
 
@@ -194,7 +224,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const scanStartFrame = config.scanEnabled
     ? typingEndFrame + SCAN_PRE_PAUSE_FRAMES
     : Infinity;
-  const zoomInEndFrame = scanStartFrame + SCAN_ZOOM_FRAMES;
+  const zoomInEndFrame = scanStartFrame + zoomFrames;
   const panStartFrame  = zoomInEndFrame;
 
   // The X position where the camera lands after zoom-in and from which every
@@ -203,17 +233,6 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   const panStartX = Tx_left;
 
   const isAct1 = frame < scanStartFrame;
-
-  // ── Pan timings (indexed by fullCode line index) ──────────────────────────
-  const panTimings = useMemo(
-    () => computeLinePanTimings(
-      config,
-      narrativeInfo.narrativeMap,
-      narrativeInfo.narrativeLineIndices,
-      narrativeInfo.introLineIndices
-    ),
-    [config, narrativeInfo]
-  );
 
   // ── lineMetrics — only for non-narrative lines (the scan pan stops) ───────
   const lineMetrics = useMemo(() => {
@@ -276,7 +295,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const panEndFrame       = panStartFrame + dynamicScanFrames;
   const zoomOutStartFrame = panEndFrame;
-  const zoomOutEndFrame   = zoomOutStartFrame + SCAN_ZOOM_FRAMES;
+  const zoomOutEndFrame   = zoomOutStartFrame + zoomFrames;
 
   // ── Scene transform ───────────────────────────────────────────────────────
   const clamp     = { extrapolateLeft: "clamp" as const, extrapolateRight: "clamp" as const };
@@ -306,90 +325,93 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   let effectiveScrollY = act1ScrollY;
 
-  if (frame < scanStartFrame) {
-    effectiveScrollY = act1ScrollY;
-
-  } else if (frame <= zoomInEndFrame) {
-    const m0 = lineMetrics[0] ?? { Ty: 0, scroll: 0 };
-    sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], easeOut);
-    sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], easeOut);
-    sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, panStartX], easeOut);
-    effectiveScrollY = 0;
-
-  } else if (frame < panEndFrame) {
-    sceneZoom = SCAN_ZOOM;
-    const scanFrame = frame - panStartFrame;
-    const schedIdx  = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
-    const ci        = schedIdx === -1 ? lineSchedules.length - 1 : schedIdx;
-    const sched     = lineSchedules[ci];
-    const curr      = lineMetrics[ci];
-
-    if (!sched || !curr) {
-      effectiveScrollY = 0;
-    } else {
-      const inLineFrame = scanFrame - sched.start;
-
-      if (scanFrame < sched.arriveEnd) {
-        // Panning to this line (starts from panStartX, sweeps right to targetTx)
-        effectiveScrollY = curr.scroll;
-        sceneTranslateY  = curr.Ty;
-        sceneTranslateX  = interpolate(
-          inLineFrame, [0, Math.max(1, sched.arriveEnd - sched.start)],
-          [panStartX, curr.targetTx], easeOut
-        );
-      } else if (scanFrame < sched.commentLine2Start) {
-        // Line 1 typing — snap back to left edge then pan to comment end
-        effectiveScrollY = curr.scroll;
-        sceneTranslateY  = curr.Ty;
-        const commentFrame  = scanFrame - sched.arriveEnd;
-        const line1Duration = Math.max(1, sched.commentLine2Start - sched.arriveEnd);
-        // Smooth snap-back to panStartX over a few frames (only needed when camera panned right for long line)
-        const snapBackFrames = curr.targetTx === panStartX ? 0 : Math.min(4, Math.floor(line1Duration / 3));
-        if (snapBackFrames > 0 && commentFrame < snapBackFrames) {
-          sceneTranslateX = interpolate(commentFrame, [0, snapBackFrames], [curr.targetTx, panStartX], easeOut);
-        } else {
-          const f = Math.max(0, commentFrame - snapBackFrames);
-          const d = Math.max(1, line1Duration - snapBackFrames);
-          sceneTranslateX = interpolate(f, [0, d], [panStartX, curr.commentTargetTx], clamp);
-        }
-      } else if (scanFrame < sched.commentEnd) {
-        // Line 2 typing — camera holds at commentTargetTx while second line types
-        effectiveScrollY = curr.scroll;
-        sceneTranslateY  = curr.Ty;
-        sceneTranslateX  = curr.commentTargetTx;
-      } else if (scanFrame < sched.holdEnd) {
-        // Comment done — hold with camera at commentTargetTx
-        effectiveScrollY = curr.scroll;
-        sceneTranslateY  = curr.Ty;
-        sceneTranslateX  = curr.commentTargetTx;
-      } else {
-        // Snapping to next line
-        const next      = lineMetrics[ci + 1] ?? curr;
-        const snapFrame = scanFrame - sched.holdEnd;
-        const snapProg  = spring({
-          fps,
-          frame: snapFrame,
-          config: { damping: 40, stiffness: 200 },
-          durationInFrames: SCAN_SNAP_FRAMES,
-        });
-        effectiveScrollY = curr.scroll        + (next.scroll   - curr.scroll)   * snapProg;
-        sceneTranslateY  = curr.Ty            + (next.Ty       - curr.Ty)       * snapProg;
-        sceneTranslateX  = curr.commentTargetTx + (panStartX   - curr.commentTargetTx) * snapProg;
-      }
-    }
-
-  } else if (frame <= zoomOutEndFrame) {
-    const last = lineMetrics[lineMetrics.length - 1] ?? { Ty: 0, targetTx: 0, scroll: 0 };
-    sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], easeInOut);
-    sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty, 0], easeInOut);
-    sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.targetTx, 0], easeInOut);
-    effectiveScrollY = 0;
-
+  if (isHighlightStatic) {
+    // Static mode: camera never moves; everything stays at zoom 1
+    sceneZoom = 1;
+    sceneTranslateX = 0;
+    sceneTranslateY = 0;
+    effectiveScrollY = frame < scanStartFrame ? act1ScrollY : 0;
   } else {
-    sceneZoom        = 1;
-    sceneTranslateX  = 0;
-    sceneTranslateY  = 0;
-    effectiveScrollY = act2ScrollY;
+    // Zoom-pan mode
+    if (frame < scanStartFrame) {
+      effectiveScrollY = act1ScrollY;
+
+    } else if (frame <= zoomInEndFrame) {
+      const m0 = lineMetrics[0] ?? { Ty: 0, scroll: 0 };
+      sceneZoom        = interpolate(frame, [scanStartFrame, zoomInEndFrame], [1, SCAN_ZOOM], easeOut);
+      sceneTranslateY  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, m0.Ty], easeOut);
+      sceneTranslateX  = interpolate(frame, [scanStartFrame, zoomInEndFrame], [0, panStartX], easeOut);
+      effectiveScrollY = 0;
+
+    } else if (frame < panEndFrame) {
+      sceneZoom = SCAN_ZOOM;
+      const scanFrame = frame - panStartFrame;
+      const schedIdx  = lineSchedules.findIndex(s => scanFrame < s.snapEnd);
+      const ci        = schedIdx === -1 ? lineSchedules.length - 1 : schedIdx;
+      const sched     = lineSchedules[ci];
+      const curr      = lineMetrics[ci];
+
+      if (!sched || !curr) {
+        effectiveScrollY = 0;
+      } else {
+        const inLineFrame = scanFrame - sched.start;
+
+        if (scanFrame < sched.arriveEnd) {
+          effectiveScrollY = curr.scroll;
+          sceneTranslateY  = curr.Ty;
+          sceneTranslateX  = interpolate(
+            inLineFrame, [0, Math.max(1, sched.arriveEnd - sched.start)],
+            [panStartX, curr.targetTx], easeOut
+          );
+        } else if (scanFrame < sched.commentLine2Start) {
+          effectiveScrollY = curr.scroll;
+          sceneTranslateY  = curr.Ty;
+          const commentFrame  = scanFrame - sched.arriveEnd;
+          const line1Duration = Math.max(1, sched.commentLine2Start - sched.arriveEnd);
+          const snapBackFrames = curr.targetTx === panStartX ? 0 : Math.min(4, Math.floor(line1Duration / 3));
+          if (snapBackFrames > 0 && commentFrame < snapBackFrames) {
+            sceneTranslateX = interpolate(commentFrame, [0, snapBackFrames], [curr.targetTx, panStartX], easeOut);
+          } else {
+            const f = Math.max(0, commentFrame - snapBackFrames);
+            const d = Math.max(1, line1Duration - snapBackFrames);
+            sceneTranslateX = interpolate(f, [0, d], [panStartX, curr.commentTargetTx], clamp);
+          }
+        } else if (scanFrame < sched.commentEnd) {
+          effectiveScrollY = curr.scroll;
+          sceneTranslateY  = curr.Ty;
+          sceneTranslateX  = curr.commentTargetTx;
+        } else if (scanFrame < sched.holdEnd) {
+          effectiveScrollY = curr.scroll;
+          sceneTranslateY  = curr.Ty;
+          sceneTranslateX  = curr.commentTargetTx;
+        } else {
+          const next      = lineMetrics[ci + 1] ?? curr;
+          const snapFrame = scanFrame - sched.holdEnd;
+          const snapProg  = spring({
+            fps,
+            frame: snapFrame,
+            config: { damping: 40, stiffness: 200 },
+            durationInFrames: SCAN_SNAP_FRAMES,
+          });
+          effectiveScrollY = curr.scroll           + (next.scroll   - curr.scroll)   * snapProg;
+          sceneTranslateY  = curr.Ty               + (next.Ty       - curr.Ty)       * snapProg;
+          sceneTranslateX  = curr.commentTargetTx  + (panStartX     - curr.commentTargetTx) * snapProg;
+        }
+      }
+
+    } else if (frame <= zoomOutEndFrame) {
+      const last = lineMetrics[lineMetrics.length - 1] ?? { Ty: 0, targetTx: 0, scroll: 0 };
+      sceneZoom        = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [SCAN_ZOOM, 1], easeInOut);
+      sceneTranslateY  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.Ty, 0], easeInOut);
+      sceneTranslateX  = interpolate(frame, [zoomOutStartFrame, zoomOutEndFrame], [last.targetTx, 0], easeInOut);
+      effectiveScrollY = 0;
+
+    } else {
+      sceneZoom        = 1;
+      sceneTranslateX  = 0;
+      sceneTranslateY  = 0;
+      effectiveScrollY = act2ScrollY;
+    }
   }
 
   // ── Highlight line (visual index into nonNarrativeCodeLines) ─────────────
@@ -399,6 +421,18 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     const si    = lineSchedules.findIndex(s => scanF < s.snapEnd);
     if (si !== -1 && scanF < lineSchedules[si].holdEnd) {
       highlightSchedIdx = si;
+    }
+  }
+
+  // Fade fraction for the highlight-static left-border accent (0..1)
+  let highlightFraction = 0;
+  if (isHighlightStatic && highlightSchedIdx !== -1) {
+    const sched = lineSchedules[highlightSchedIdx];
+    const scanF = frame - panStartFrame;
+    if (scanF < sched.holdEnd) {
+      highlightFraction = Math.min(1, (scanF - sched.start) / 8);
+    } else {
+      highlightFraction = Math.max(0, 1 - (scanF - sched.holdEnd) / Math.max(1, SCAN_SNAP_FRAMES));
     }
   }
 
@@ -583,18 +617,16 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             />
           )}
 
-          {/* Zoom-in */}
-          {config.scanEnabled && (
-            <Sequence from={scanStartFrame}>
-              <Audio src={SFX_ZOOM_IN} volume={config.sfxVolume * 0.75} />
-            </Sequence>
-          )}
-
-          {/* Zoom-out */}
-          {config.scanEnabled && (
-            <Sequence from={zoomOutStartFrame}>
-              <Audio src={SFX_ZOOM_OUT} volume={config.sfxVolume * 0.75} />
-            </Sequence>
+          {/* Zoom-in/out — only in zoom-pan mode */}
+          {config.scanEnabled && !isHighlightStatic && (
+            <>
+              <Sequence from={scanStartFrame}>
+                <Audio src={SFX_ZOOM_IN} volume={config.sfxVolume * 0.75} />
+              </Sequence>
+              <Sequence from={zoomOutStartFrame}>
+                <Audio src={SFX_ZOOM_OUT} volume={config.sfxVolume * 0.75} />
+              </Sequence>
+            </>
           )}
 
           {/* Typing click — outro */}
@@ -648,7 +680,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             right: 80,
             zIndex: 15,
             fontFamily: fontScale,
-            fontSize: 58,
+            fontSize: config.titleFontSize ?? 58,
             lineHeight: 1.15,
             letterSpacing: "-0.02em",
             fontWeight: 700,
@@ -678,10 +710,10 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           position: "absolute",
           top: "50%",
           left: "50%",
-          transform: `translate(-50%, -50%) scale(${introScale})`,
+          transform: `translate(-50%, -50%) scale(${introScale * codeCardScale})`,
           opacity: introOpacity,
           width: width - config.padding * 2,
-          maxHeight: height - 420,
+          ...(isHighlightStatic ? {} : { maxHeight: height - 420 }),
           background: theme.bg,
           border: isY2K ? `2px solid #000` : `1px solid ${theme.border}`,
           boxShadow: isY2K ? "8px 8px 0 rgba(0,0,0,0.18)" : "0 24px 64px rgba(0, 0, 0, 0.35)",
@@ -811,10 +843,17 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 const highlightBg = isHighlighted
                   ? (isY2K ? "rgba(0,68,200,0.07)" : "rgba(255,255,255,0.09)")
                   : "transparent";
+                const staticAccentOpacity = isHighlightStatic && isHighlighted ? highlightFraction : 0;
                 const commentLineStyle: React.CSSProperties = {
                   display: "flex",
                   minHeight: lineHeight,
-                  background: highlightBg,
+                  background: isHighlightStatic
+                    ? `rgba(255, 87, 34, ${0.1 * staticAccentOpacity})`
+                    : highlightBg,
+                  borderLeft: isHighlightStatic && isHighlighted
+                    ? `3px solid rgba(255, 87, 34, ${staticAccentOpacity})`
+                    : "none",
+                  paddingLeft: isHighlightStatic && isHighlighted ? 4 : 0,
                   borderRadius: 2,
                 };
                 const lineNumWidth_ch = `${String(codeLines.length).length + 1}ch`;
@@ -857,7 +896,13 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                         <div key={wIdx} style={{
                           display: "flex",
                           minHeight: lineHeight,
-                          background: highlightBg,
+                          background: isHighlightStatic
+                            ? `rgba(255, 87, 34, ${0.1 * staticAccentOpacity})`
+                            : highlightBg,
+                          borderLeft: isHighlightStatic && isHighlighted
+                            ? `3px solid rgba(255, 87, 34, ${staticAccentOpacity})`
+                            : "none",
+                          paddingLeft: isHighlightStatic && isHighlighted ? 4 : 0,
                           borderRadius: 2,
                         }}>
                           {config.showLineNumbers && (
@@ -881,7 +926,13 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                       <div style={{
                         display: "flex",
                         minHeight: lineHeight,
-                        background: highlightBg,
+                        background: isHighlightStatic
+                          ? `rgba(255, 87, 34, ${0.1 * staticAccentOpacity})`
+                          : highlightBg,
+                        borderLeft: isHighlightStatic && isHighlighted
+                          ? `3px solid rgba(255, 87, 34, ${staticAccentOpacity})`
+                          : "none",
+                        paddingLeft: isHighlightStatic && isHighlighted ? 4 : 0,
                         borderRadius: 2,
                       }}>
                         {config.showLineNumbers && (

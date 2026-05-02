@@ -395,6 +395,16 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
               />
             </Field>
 
+            <Field label={`Title size · ${config.titleFontSize ?? 58}px`}>
+              <Slider
+                value={[config.titleFontSize ?? 58]}
+                min={32}
+                max={96}
+                step={2}
+                onValueChange={([v]) => onChange({ titleFontSize: v })}
+              />
+            </Field>
+
             <div className="brutal-border bg-concrete p-4 space-y-3">
               <Label className="font-mono text-xs tracking-wide text-muted-foreground">Title text color</Label>
               <div className="flex gap-2 flex-wrap">
@@ -527,6 +537,24 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
 
         {config.scanEnabled && (
           <>
+            <div className="brutal-border bg-paper px-4 py-3 space-y-2">
+              <Label className="font-mono text-xs tracking-wide text-muted-foreground">Scan mode</Label>
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => onChange({ scanMode: "highlight-static" })}
+                  className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${config.scanMode !== "zoom-pan" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+                >
+                  Highlight
+                </button>
+                <button
+                  onClick={() => onChange({ scanMode: "zoom-pan" })}
+                  className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${config.scanMode === "zoom-pan" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+                >
+                  Zoom & pan
+                </button>
+              </div>
+            </div>
+
             <Field label={`Scan speed · ${config.scanSpeed.toFixed(2)} lines/s`}>
               <Slider
                 value={[config.scanSpeed]}
