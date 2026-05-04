@@ -453,7 +453,7 @@ export function useVideoExport() {
           : 0;
         const codeAreaWidth = (VIDEO_WIDTH - config.padding * 2) - config.padding * 2;
         const maxCharsPerLine = Math.max(20, Math.floor((codeAreaWidth - lineNumWidth) / charWidth));
-        const wrappedAct1Code = autoWrapCode(narrativeInfo.act1Code, maxCharsPerLine);
+        const wrappedAct1Code = autoWrapCode(narrativeInfo.act1Code, maxCharsPerLine, config.language);
         const narrativeOpts: NarrativeOpts = {
           act1CodeLength: wrappedAct1Code.length,
           narrativeMap: narrativeInfo.narrativeMap,

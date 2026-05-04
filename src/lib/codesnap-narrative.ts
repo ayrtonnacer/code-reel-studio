@@ -38,16 +38,81 @@ function stripCommentPrefix(line: string, lang: string): string {
   }
 }
 
+import { splitNoWidow } from "@/lib/codesnap-types";
+
+/**
+ * Returns the inline comment marker for a language ("#", "//", "--", etc.),
+ * or null if the language doesn't use one (e.g. JSON).
+ */
+function inlineCommentMarker(lang: string): string | null {
+  switch (lang) {
+    case "python": case "ruby": case "bash": return "#";
+    case "sql": return "--";
+    case "json": return null;
+    default: return "//"; // js/ts/tsx/jsx/go/rust/java/csharp/cpp/css(*)/html(*)
+  }
+}
+
+/**
+ * Detects whether a line is a single-line comment using `marker`.
+ * Returns `{ indent, marker, spaceAfter, body }` or null.
+ */
+function parseInlineCommentLine(
+  line: string,
+  marker: string
+): { indent: string; lead: string; body: string } | null {
+  // marker may be "#", "//", or "--"
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^(\\s*)(${escaped}+\\s?)(.*)$`);
+  const m = re.exec(line);
+  if (!m) return null;
+  return { indent: m[1], lead: m[2], body: m[3] };
+}
+
 /**
  * Wraps long lines at word boundaries.
  * Used on act1Code so lines never overflow the code card.
+ *
+ * If a comment line wraps, the comment marker (e.g. "#" or "//") is
+ * preserved on every continuation line so `# foo bar baz qux` becomes:
+ *   # foo bar
+ *   # baz qux
+ * not:
+ *   # foo bar
+ *     baz qux
  */
-export function autoWrapCode(code: string, maxChars: number): string {
+export function autoWrapCode(code: string, maxChars: number, lang?: string): string {
   if (maxChars < 10) return code;
+  const marker = lang ? inlineCommentMarker(lang) : null;
+
   return code
     .split("\n")
     .map((line) => {
       if (line.length <= maxChars) return line;
+
+      const commentParts = marker
+        ? parseInlineCommentLine(line, marker)
+        : null;
+
+      if (commentParts) {
+        // Wrap a comment line — preserve `<indent><marker> ` on every part
+        const { indent, lead, body } = commentParts;
+        const prefix = indent + lead;
+        const inner = maxChars - prefix.length;
+        if (inner < 8) return line; // too narrow — bail
+        const parts: string[] = [];
+        let rem = body;
+        while (rem.length > inner) {
+          const split = splitNoWidow(rem, inner);
+          if (!split) { parts.push(prefix + rem); rem = ""; break; }
+          parts.push(prefix + split[0]);
+          rem = split[1];
+        }
+        if (rem) parts.push(prefix + rem);
+        return parts.join("\n");
+      }
+
+      // Non-comment line — keep original behavior (continuation indent)
       const indent = /^(\s*)/.exec(line)?.[1] ?? "";
       const cont = indent + "  ";
       const parts: string[] = [];

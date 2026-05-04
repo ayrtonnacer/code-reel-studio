@@ -45,6 +45,47 @@ export type GradientDirection =
   | "45deg"
   | "radial";
 
+/**
+ * Splits `text` into two lines at a word boundary near `maxChars`,
+ * avoiding a "widow" — a single word alone on the second line.
+ *
+ * Returns `null` if `text.length <= maxChars` (no wrap needed).
+ */
+export function splitNoWidow(
+  text: string,
+  maxChars: number,
+  minLine1: number = 12
+): [string, string] | null {
+  if (text.length <= maxChars) return null;
+
+  const findSplit = (limit: number): number => {
+    const sp = text.lastIndexOf(" ", limit);
+    return sp > 0 ? sp : limit;
+  };
+
+  let splitAt = findSplit(maxChars);
+
+  // Anti-widow: ensure line 2 has ≥ 2 words. Move split left until satisfied.
+  let guard = 0;
+  while (guard++ < 8) {
+    const tail = text.slice(splitAt).trimStart();
+    const wordCount = tail.split(/\s+/).filter(Boolean).length;
+    if (wordCount >= 2) break;
+
+    const head = text.slice(0, splitAt).trimEnd();
+    if (head.length < minLine1) break;
+
+    const earlier = text.lastIndexOf(" ", splitAt - 1);
+    if (earlier <= 0) break;
+    splitAt = earlier;
+  }
+
+  return [
+    text.slice(0, splitAt).trimEnd(),
+    text.slice(splitAt).trimStart(),
+  ];
+}
+
 export interface CustomGradient {
   from: string; // hex
   to: string; // hex
@@ -106,6 +147,29 @@ export interface SnippetConfig {
   audioName: string | null;
   audioVolume: number; // 0..1
   audioFadeOut: number; // seconds
+  // ── Subtitles ──
+  subtitlesEnabled: boolean;
+  subtitleScript: string;          // raw pasted script (kept so user can re-sync)
+  subtitleBlocks: SubtitleBlock[]; // generated/edited blocks shown on screen
+  subtitleStyle: SubtitleStyle;
+}
+
+export interface SubtitleBlock {
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+
+export interface SubtitleStyle {
+  fontSize: number;
+  color: string;       // text color (typically white)
+  strokeColor: string; // outline color (typically black or accent)
+  strokeWidth: number; // pixels
+  bgEnabled: boolean;
+  bgColor: string;
+  bgOpacity: number;   // 0..1
+  fontWeight: number;  // 400..900
+  position: "bottom" | "center";
 }
 
 export const DEFAULT_CODE = `# Función de ordenamiento rápido que devuelve una lista ordenada
@@ -178,6 +242,20 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   audioName: null,
   audioVolume: 1.0,
   audioFadeOut: 0,
+  subtitlesEnabled: false,
+  subtitleScript: "",
+  subtitleBlocks: [],
+  subtitleStyle: {
+    fontSize: 64,
+    color: "#ffffff",
+    strokeColor: "#000000",
+    strokeWidth: 8,
+    bgEnabled: false,
+    bgColor: "#000000",
+    bgOpacity: 0.6,
+    fontWeight: 800,
+    position: "bottom",
+  },
 };
 
 export const FPS = 30;
@@ -249,13 +327,9 @@ export function computeLinePanTimings(
       const maxChars = Math.max(15,
         Math.floor((visibleWidth * 1.5 - xCodeLeft - lineNumWidth) / charWidth) - prefixLen
       );
-      if (stripped.length > maxChars) {
-        const breakIdx = stripped.lastIndexOf(" ", maxChars);
-        const splitAt  = breakIdx > 0 ? breakIdx : maxChars;
-        introWrappedLines = [
-          prefix + stripped.slice(0, splitAt).trimEnd(),
-          prefix + stripped.slice(splitAt).trimStart(),
-        ];
+      const split = splitNoWidow(stripped, maxChars);
+      if (split) {
+        introWrappedLines = [prefix + split[0], prefix + split[1]];
       } else {
         introWrappedLines = [t];
       }
@@ -293,16 +367,8 @@ export function computeLinePanTimings(
         Math.floor((visibleWidth * 1.5 - xCodeLeft - lineNumWidth) / charWidth) - prefixLen
       );
 
-      if (commentText.length <= maxChars) {
-        commentLines = [commentText];
-      } else {
-        const breakIdx = commentText.lastIndexOf(" ", maxChars);
-        const splitAt  = breakIdx > 0 ? breakIdx : maxChars;
-        commentLines = [
-          commentText.slice(0, splitAt).trimEnd(),
-          commentText.slice(splitAt).trimStart(),
-        ];
-      }
+      const split = splitNoWidow(commentText, maxChars);
+      commentLines = split ? [split[0], split[1]] : [commentText];
 
       commentLine1Frames = Math.ceil(commentLines[0].length / Math.max(1, cfg.typingSpeed) * FPS);
       commentTypingFrames = commentLines.reduce(
@@ -343,7 +409,16 @@ export function computeDurationFrames(cfg: SnippetConfig, narrativeOpts?: Narrat
     : 0;
 
   const total = cfg.startDelay + typingSeconds + scanSec + outroSeconds + cfg.holdEnd;
-  return Math.max(FPS, Math.round(total * FPS));
+
+  // Subtitles can extend duration so the last block fully plays.
+  let subtitleMinSec = 0;
+  if (cfg.subtitlesEnabled && cfg.subtitleBlocks.length > 0) {
+    subtitleMinSec = cfg.subtitleBlocks.reduce(
+      (max, b) => Math.max(max, b.endSec), 0
+    ) + 0.3; // small tail
+  }
+
+  return Math.max(FPS, Math.round(Math.max(total, subtitleMinSec) * FPS));
 }
 
 /** Key video timestamps in seconds — used by export for SFX placement. */

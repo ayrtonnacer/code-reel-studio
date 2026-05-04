@@ -104,8 +104,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
   }, [config.fontSize, config.padding, config.showLineNumbers, width, charWidth, lineNumWidth]);
 
   const wrappedAct1Code = useMemo(
-    () => autoWrapCode(narrativeInfo.act1Code, maxCharsPerLine),
-    [narrativeInfo.act1Code, maxCharsPerLine]
+    () => autoWrapCode(narrativeInfo.act1Code, maxCharsPerLine, config.language),
+    [narrativeInfo.act1Code, maxCharsPerLine, config.language]
   );
 
   // ── Tokenization ─────────────────────────────────────────────────────────
@@ -987,8 +987,68 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         </div>
       </div>
 
+      {/* ── Script-driven subtitle overlay (TikTok/Reels style) ── */}
+      {config.subtitlesEnabled && (() => {
+        const tSec = frame / fps;
+        const active = config.subtitleBlocks.find(b => tSec >= b.startSec && tSec < b.endSec);
+        if (!active) return null;
+        const s = config.subtitleStyle;
+        const stroke = Math.max(0, s.strokeWidth);
+        const textShadow = stroke > 0
+          ? Array.from({ length: 8 }, (_, i) => {
+              const ang = (i / 8) * Math.PI * 2;
+              const dx = Math.cos(ang) * stroke;
+              const dy = Math.sin(ang) * stroke;
+              return `${dx.toFixed(1)}px ${dy.toFixed(1)}px 0 ${s.strokeColor}`;
+            }).join(", ")
+          : "none";
+        const positionStyle: React.CSSProperties = s.position === "center"
+          ? { top: "50%", transform: "translateY(-50%)" }
+          : { bottom: 240 };
+        const bgRgba = s.bgEnabled ? hexToRgba(s.bgColor, s.bgOpacity) : "transparent";
+        return (
+          <div style={{
+            position: "absolute",
+            left: 60,
+            right: 60,
+            zIndex: 40,
+            display: "flex",
+            justifyContent: "center",
+            ...positionStyle,
+          }}>
+            <div style={{
+              background: bgRgba,
+              borderRadius: s.bgEnabled ? 14 : 0,
+              padding: s.bgEnabled ? "16px 26px" : "0",
+              fontFamily: fontScale,
+              fontSize: s.fontSize,
+              lineHeight: 1.18,
+              color: s.color,
+              textAlign: "center",
+              fontWeight: s.fontWeight,
+              letterSpacing: "-0.01em",
+              textShadow,
+              maxWidth: "92%",
+              wordBreak: "break-word",
+            }}>
+              {(() => {
+                const split = (active.text.length > 32)
+                  ? (() => {
+                      const limit = Math.ceil(active.text.length / 2);
+                      const sp = active.text.lastIndexOf(" ", limit + 4);
+                      const at = sp > 8 ? sp : limit;
+                      return [active.text.slice(0, at).trim(), active.text.slice(at).trim()];
+                    })()
+                  : [active.text];
+                return split.map((line, i) => <div key={i}>{line}</div>);
+              })()}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Subtitle overlay (TikTok-style, outside the code card) ── */}
-      {config.commentStyle === "subtitle" && subtitleText && (
+      {config.commentStyle === "subtitle" && !config.subtitlesEnabled && subtitleText && (
         <div style={{
           position: "absolute",
           bottom: 180,

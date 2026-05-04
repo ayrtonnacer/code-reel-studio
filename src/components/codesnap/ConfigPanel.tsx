@@ -15,11 +15,13 @@ import type {
   GradientDirection,
   Language,
   SnippetConfig,
+  SubtitleBlock,
   Theme,
 } from "@/lib/codesnap-types";
 import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
-import { Image, Mic, Music, Upload, X } from "lucide-react";
-import { useRef } from "react";
+import { syncScriptToAudio, distributeScriptUniformly, type SyncProgress } from "@/lib/codesnap-subtitles";
+import { Captions, Image, Mic, Music, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface Props {
@@ -121,7 +123,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   return (
     <Tabs defaultValue="style" className="w-full">
       <TabsList
-        className="grid w-full grid-cols-4 brutal-border h-auto p-0 rounded-none bg-paper"
+        className="grid w-full grid-cols-5 brutal-border h-auto p-0 rounded-none bg-paper"
       >
         <TabsTrigger
           value="style"
@@ -143,9 +145,15 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
         </TabsTrigger>
         <TabsTrigger
           value="animation"
-          className="font-display text-xs rounded-none py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+          className="font-display text-xs rounded-none border-r-2 border-foreground py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
         >
           Anim · Audio
+        </TabsTrigger>
+        <TabsTrigger
+          value="subs"
+          className="font-display text-xs rounded-none py-3 data-[state=active]:bg-ink data-[state=active]:text-paper"
+        >
+          Subs
         </TabsTrigger>
       </TabsList>
 
@@ -739,7 +747,264 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           )}
         </div>
       </TabsContent>
+
+      {/* SUBTITLES */}
+      <TabsContent value="subs" className="space-y-5 pt-5">
+        <SubtitlesEditor config={config} onChange={onChange} />
+      </TabsContent>
     </Tabs>
+  );
+};
+
+// ──────────────────────────────────────────────────────────────────────────
+// SUBTITLES EDITOR
+// ──────────────────────────────────────────────────────────────────────────
+
+const SubtitlesEditor: React.FC<{
+  config: SnippetConfig;
+  onChange: (next: Partial<SnippetConfig>) => void;
+}> = ({ config, onChange }) => {
+  const [syncing, setSyncing] = useState(false);
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+
+  const updateBlock = (idx: number, patch: Partial<SubtitleBlock>) => {
+    const next = config.subtitleBlocks.map((b, i) => i === idx ? { ...b, ...patch } : b);
+    onChange({ subtitleBlocks: next });
+  };
+  const removeBlock = (idx: number) => {
+    onChange({ subtitleBlocks: config.subtitleBlocks.filter((_, i) => i !== idx) });
+  };
+  const addBlock = () => {
+    const last = config.subtitleBlocks[config.subtitleBlocks.length - 1];
+    const startSec = last ? last.endSec : 0;
+    onChange({
+      subtitleBlocks: [...config.subtitleBlocks, { startSec, endSec: startSec + 1.5, text: "" }],
+    });
+  };
+
+  const handleAutoSync = async () => {
+    if (!config.subtitleScript.trim()) {
+      toast.error("Pegá el guión primero");
+      return;
+    }
+    if (!config.audioDataUrl) {
+      toast.error("Subí un voiceover en la pestaña Anim · Audio para sincronizar");
+      return;
+    }
+    setSyncing(true);
+    setProgress({ phase: "loading-model", pct: 0, message: "Iniciando…" });
+    try {
+      const blocks = await syncScriptToAudio(
+        config.subtitleScript,
+        config.audioDataUrl,
+        (p) => setProgress(p),
+      );
+      onChange({ subtitleBlocks: blocks, subtitlesEnabled: true });
+      toast.success(`Sincronizados ${blocks.length} bloques`);
+    } catch (err) {
+      toast.error("Falló la sincronización", { description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSyncing(false);
+      setProgress(null);
+    }
+  };
+
+  const handleDistribute = () => {
+    if (!config.subtitleScript.trim()) {
+      toast.error("Pegá el guión primero");
+      return;
+    }
+    const totalSec = config.audioDataUrl ? 12 : 12; // user can edit afterwards
+    const blocks = distributeScriptUniformly(config.subtitleScript, totalSec);
+    onChange({ subtitleBlocks: blocks, subtitlesEnabled: true });
+    toast.success(`Distribuidos ${blocks.length} bloques (ajustá los tiempos)`);
+  };
+
+  const s = config.subtitleStyle;
+  const setStyle = (patch: Partial<typeof s>) => onChange({ subtitleStyle: { ...s, ...patch } });
+
+  return (
+    <>
+      <ToggleRow
+        label="Subtítulos del guión"
+        checked={config.subtitlesEnabled}
+        onChange={(v) => onChange({ subtitlesEnabled: v })}
+      />
+
+      <Field label="Guión completo (pegalo entero)">
+        <textarea
+          value={config.subtitleScript}
+          onChange={(e) => onChange({ subtitleScript: e.target.value })}
+          rows={6}
+          placeholder="Pegá el texto que vas a narrar en el video. Después tocá 'Sincronizar con voiceover' y los subtítulos quedan calzados al audio."
+          className="w-full font-mono text-xs brutal-border rounded-none bg-paper p-3 outline-none resize-y"
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={handleAutoSync}
+          disabled={syncing}
+          className="brutal-border bg-ember text-paper py-3 px-3 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Sparkles className="h-4 w-4" />
+          {syncing ? "Sincronizando…" : "Sincronizar con voz"}
+        </button>
+        <button
+          onClick={handleDistribute}
+          disabled={syncing}
+          className="brutal-border bg-ink text-paper py-3 px-3 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember disabled:opacity-50"
+        >
+          <Captions className="h-4 w-4" />
+          Distribuir uniforme
+        </button>
+      </div>
+
+      {syncing && progress && (
+        <div className="brutal-border bg-concrete p-3 space-y-2">
+          <div className="flex justify-between font-mono text-[10px] tracking-wide">
+            <span>{progress.message}</span>
+            <span>{progress.pct.toFixed(0)}%</span>
+          </div>
+          <div className="h-2 bg-paper brutal-border">
+            <div className="h-full bg-ember transition-[width] duration-200" style={{ width: `${progress.pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {!syncing && config.subtitleScript && !config.audioDataUrl && (
+        <p className="text-[10px] font-mono text-muted-foreground">
+          Tip: subí un voiceover en <strong>Anim · Audio</strong> y la sincronización
+          automática usa Whisper para calzar palabras con el audio.
+        </p>
+      )}
+
+      {/* Block list */}
+      {config.subtitleBlocks.length > 0 && (
+        <div className="brutal-border bg-concrete p-3 space-y-2 max-h-72 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <Label className="font-mono text-xs tracking-wide">
+              Bloques ({config.subtitleBlocks.length})
+            </Label>
+            <button
+              onClick={() => onChange({ subtitleBlocks: [] })}
+              className="font-mono text-[10px] tracking-wide flex items-center gap-1 hover:text-ember"
+            >
+              <X className="h-3 w-3" /> Limpiar
+            </button>
+          </div>
+          {config.subtitleBlocks.map((b, i) => (
+            <div key={i} className="brutal-border bg-paper p-2 space-y-1">
+              <div className="flex gap-1 items-center">
+                <input
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  value={b.startSec.toFixed(2)}
+                  onChange={(e) => updateBlock(i, { startSec: parseFloat(e.target.value) || 0 })}
+                  className="w-16 font-mono text-[11px] bg-transparent outline-none brutal-border px-1 py-0.5"
+                />
+                <span className="font-mono text-[10px] text-muted-foreground">→</span>
+                <input
+                  type="number"
+                  step={0.05}
+                  min={0}
+                  value={b.endSec.toFixed(2)}
+                  onChange={(e) => updateBlock(i, { endSec: parseFloat(e.target.value) || 0 })}
+                  className="w-16 font-mono text-[11px] bg-transparent outline-none brutal-border px-1 py-0.5"
+                />
+                <button
+                  onClick={() => removeBlock(i)}
+                  className="ml-auto p-1 hover:text-ember"
+                  aria-label="Borrar bloque"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+              <input
+                value={b.text}
+                onChange={(e) => updateBlock(i, { text: e.target.value })}
+                className="w-full font-mono text-xs bg-transparent outline-none brutal-border px-2 py-1"
+              />
+            </div>
+          ))}
+          <button
+            onClick={addBlock}
+            className="w-full font-mono text-[11px] tracking-wide brutal-border bg-paper py-2 hover:bg-ember hover:text-paper"
+          >
+            + Bloque manual
+          </button>
+        </div>
+      )}
+
+      {/* Style */}
+      <div className="brutal-border bg-concrete p-4 space-y-4">
+        <Label className="font-mono text-xs tracking-wide flex items-center gap-2">
+          <Captions className="h-3 w-3" /> Estilo del subtítulo
+        </Label>
+
+        <Field label={`Tamaño · ${s.fontSize}px`}>
+          <Slider
+            value={[s.fontSize]} min={32} max={110} step={2}
+            onValueChange={([v]) => setStyle({ fontSize: v })}
+          />
+        </Field>
+
+        <Field label={`Peso · ${s.fontWeight}`}>
+          <Slider
+            value={[s.fontWeight]} min={400} max={900} step={100}
+            onValueChange={([v]) => setStyle({ fontWeight: v })}
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <ColorField label="Texto" value={s.color} onChange={(v) => setStyle({ color: v })} />
+          <ColorField label="Borde" value={s.strokeColor} onChange={(v) => setStyle({ strokeColor: v })} />
+        </div>
+
+        <Field label={`Grosor del borde · ${s.strokeWidth}px`}>
+          <Slider
+            value={[s.strokeWidth]} min={0} max={16} step={1}
+            onValueChange={([v]) => setStyle({ strokeWidth: v })}
+          />
+        </Field>
+
+        <div className="brutal-border bg-paper px-4 py-3 space-y-2">
+          <Label className="font-mono text-xs tracking-wide text-muted-foreground">Posición</Label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setStyle({ position: "bottom" })}
+              className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${s.position === "bottom" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+            >
+              Abajo (TikTok)
+            </button>
+            <button
+              onClick={() => setStyle({ position: "center" })}
+              className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${s.position === "center" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+            >
+              Centro
+            </button>
+          </div>
+        </div>
+
+        <ToggleRow
+          label="Caja de fondo"
+          checked={s.bgEnabled}
+          onChange={(v) => setStyle({ bgEnabled: v })}
+        />
+        {s.bgEnabled && (
+          <>
+            <ColorField label="Color de caja" value={s.bgColor} onChange={(v) => setStyle({ bgColor: v })} />
+            <Field label={`Opacidad · ${Math.round(s.bgOpacity * 100)}%`}>
+              <Slider
+                value={[s.bgOpacity]} min={0.1} max={1} step={0.05}
+                onValueChange={([v]) => setStyle({ bgOpacity: v })}
+              />
+            </Field>
+          </>
+        )}
+      </div>
+    </>
   );
 };
 
