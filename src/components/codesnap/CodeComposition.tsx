@@ -5,6 +5,7 @@ import {
   buildBackgroundCss,
   computeLinePanTimings,
   computeVideoTimings,
+  splitNoWidow,
   SCAN_ZOOM_FRAMES,
   SCAN_SNAP_FRAMES,
   SCAN_BASE_READ_FRAMES,
@@ -705,15 +706,21 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         )}
 
-        {/* Code card */}
+        {/* Code card — when subtitles are on, live in the top 2/3 so the
+            bottom third is reserved for the TikTok-style caption band. */}
         <div style={{
           position: "absolute",
-          top: "50%",
+          top: config.subtitlesEnabled ? "33.33%" : "50%",
           left: "50%",
           transform: `translate(-50%, -50%) scale(${introScale * codeCardScale})`,
           opacity: introOpacity,
           width: width - config.padding * 2,
-          ...(isHighlightStatic ? {} : { maxHeight: height - 420 }),
+          ...(() => {
+            const subtitleCap = config.subtitlesEnabled ? Math.round(height * (2 / 3)) - 80 : Infinity;
+            const scanCap = isHighlightStatic ? Infinity : height - 420;
+            const cap = Math.min(subtitleCap, scanCap);
+            return Number.isFinite(cap) ? { maxHeight: cap } : {};
+          })(),
           background: theme.bg,
           border: isY2K ? `2px solid #000` : `1px solid ${theme.border}`,
           boxShadow: isY2K ? "8px 8px 0 rgba(0,0,0,0.18)" : "0 24px 64px rgba(0, 0, 0, 0.35)",
@@ -1032,15 +1039,13 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               wordBreak: "break-word",
             }}>
               {(() => {
-                const split = (active.text.length > 32)
-                  ? (() => {
-                      const limit = Math.ceil(active.text.length / 2);
-                      const sp = active.text.lastIndexOf(" ", limit + 4);
-                      const at = sp > 8 ? sp : limit;
-                      return [active.text.slice(0, at).trim(), active.text.slice(at).trim()];
-                    })()
-                  : [active.text];
-                return split.map((line, i) => <div key={i}>{line}</div>);
+                // Estimate chars/line from font size + 92% canvas width.
+                // Avg glyph ≈ 0.55em for the rounded sans we use here.
+                const usableWidth = width * 0.92 - (s.bgEnabled ? 52 : 0);
+                const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.55)));
+                const split = splitNoWidow(active.text, charsPerLine, 14);
+                const lines = split ?? [active.text];
+                return lines.map((line, i) => <div key={i}>{line}</div>);
               })()}
             </div>
           </div>
