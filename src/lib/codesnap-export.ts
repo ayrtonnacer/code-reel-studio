@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { toCanvas } from "html-to-image";
+import { toCanvas, getFontEmbedCSS } from "html-to-image";
 import {
   computeDurationFrames,
   computeVideoTimings,
@@ -44,11 +44,20 @@ const HTML_TO_IMAGE_OPTS = {
   pixelRatio: 1,
   width: VIDEO_WIDTH,
   height: VIDEO_HEIGHT,
-  skipFonts: true,
 } as const;
 
+/**
+ * Computed once per export, then passed to every toCanvas call.
+ * `skipFonts: true` was breaking subtitle rendering in MP4 — the SVG
+ * foreignObject rasterizer fell back to a system font with different
+ * metrics, causing glyphs to overlap. Embedding the @font-face CSS once
+ * (with the actual webfont bytes inlined as data URIs) makes every frame
+ * render with the same font the preview uses.
+ */
+let cachedFontEmbedCSS: string | null = null;
+
 async function captureFrame(el: HTMLElement): Promise<HTMLCanvasElement> {
-  return toCanvas(el, HTML_TO_IMAGE_OPTS);
+  return toCanvas(el, { ...HTML_TO_IMAGE_OPTS, fontEmbedCSS: cachedFontEmbedCSS ?? undefined });
 }
 
 interface AudioSource {
@@ -461,6 +470,19 @@ export function useVideoExport() {
         };
 
         const totalFrames = computeDurationFrames(config, narrativeOpts);
+
+        // Embed webfonts once so every frame rasterizes with the real font
+        // (Plus Jakarta Sans, JetBrains Mono…). Without this, the exporter
+        // falls back to a system font and subtitles overlap.
+        const frameEl = getFrameElement();
+        if (frameEl) {
+          try {
+            cachedFontEmbedCSS = await getFontEmbedCSS(frameEl);
+          } catch (err) {
+            console.warn("Font embed failed, falling back to system fonts in export:", err);
+            cachedFontEmbedCSS = null;
+          }
+        }
 
         setProgress({ phase: "rendering-frames", current: 0, total: totalFrames, message: "Rendering...", blobUrl: null, fileExt: ext });
 

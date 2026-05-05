@@ -1029,23 +1029,29 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               padding: s.bgEnabled ? "16px 26px" : "0",
               fontFamily: fontScale,
               fontSize: s.fontSize,
-              lineHeight: 1.18,
+              lineHeight: 1.22,
               color: s.color,
               textAlign: "center",
               fontWeight: s.fontWeight,
-              letterSpacing: "-0.01em",
+              // letter-spacing kept at "normal" — negative kerning collides
+              // with html-to-image's SVG rasterization in MP4 export.
+              letterSpacing: "normal",
               textShadow,
-              maxWidth: "92%",
-              wordBreak: "break-word",
+              // Pre-split into lines below; each line renders nowrap so the
+              // exporter can't re-wrap with fallback-font metrics.
+              wordBreak: "normal",
+              whiteSpace: "normal",
             }}>
               {(() => {
-                // Estimate chars/line from font size + 92% canvas width.
-                // Avg glyph ≈ 0.55em for the rounded sans we use here.
-                const usableWidth = width * 0.92 - (s.bgEnabled ? 52 : 0);
-                const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.55)));
+                // Estimate chars/line from font size + 88% canvas width.
+                // 0.58em/glyph leaves headroom for fallback fonts during export.
+                const usableWidth = width * 0.88 - (s.bgEnabled ? 52 : 0);
+                const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.58)));
                 const split = splitNoWidow(active.text, charsPerLine, 14);
                 const lines = split ?? [active.text];
-                return lines.map((line, i) => <div key={i}>{line}</div>);
+                return lines.map((line, i) => (
+                  <div key={i} style={{ whiteSpace: "nowrap" }}>{line}</div>
+                ));
               })()}
             </div>
           </div>
