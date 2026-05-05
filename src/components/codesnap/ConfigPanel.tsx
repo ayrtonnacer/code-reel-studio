@@ -19,8 +19,8 @@ import type {
   Theme,
 } from "@/lib/codesnap-types";
 import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
-import { syncScriptToAudio, distributeScriptUniformly, type SyncProgress } from "@/lib/codesnap-subtitles";
-import { Captions, Image, Mic, Music, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { parseSrt } from "@/lib/codesnap-subtitles";
+import { Captions, FileUp, Image, Mic, Music, Trash2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -764,8 +764,7 @@ const SubtitlesEditor: React.FC<{
   config: SnippetConfig;
   onChange: (next: Partial<SnippetConfig>) => void;
 }> = ({ config, onChange }) => {
-  const [syncing, setSyncing] = useState(false);
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const srtFileInputRef = useRef<HTMLInputElement>(null);
 
   const updateBlock = (idx: number, patch: Partial<SubtitleBlock>) => {
     const next = config.subtitleBlocks.map((b, i) => i === idx ? { ...b, ...patch } : b);
@@ -782,42 +781,35 @@ const SubtitlesEditor: React.FC<{
     });
   };
 
-  const handleAutoSync = async () => {
-    if (!config.subtitleScript.trim()) {
-      toast.error("Pegá el guión primero");
-      return;
-    }
-    if (!config.audioDataUrl) {
-      toast.error("Subí un voiceover en la pestaña Anim · Audio para sincronizar");
-      return;
-    }
-    setSyncing(true);
-    setProgress({ phase: "loading-model", pct: 0, message: "Iniciando…" });
+  const importSrtText = (srt: string) => {
     try {
-      const blocks = await syncScriptToAudio(
-        config.subtitleScript,
-        config.audioDataUrl,
-        (p) => setProgress(p),
-      );
-      onChange({ subtitleBlocks: blocks, subtitlesEnabled: true });
-      toast.success(`Sincronizados ${blocks.length} bloques`);
+      const blocks = parseSrt(srt);
+      onChange({ subtitleScript: srt, subtitleBlocks: blocks, subtitlesEnabled: true });
+      toast.success(`Importados ${blocks.length} bloques`);
     } catch (err) {
-      toast.error("Falló la sincronización", { description: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setSyncing(false);
-      setProgress(null);
+      toast.error("No se pudo importar el SRT", {
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
-  const handleDistribute = () => {
+  const handleImportPasted = () => {
     if (!config.subtitleScript.trim()) {
-      toast.error("Pegá el guión primero");
+      toast.error("Pegá el contenido del .srt primero");
       return;
     }
-    const totalSec = config.audioDataUrl ? 12 : 12; // user can edit afterwards
-    const blocks = distributeScriptUniformly(config.subtitleScript, totalSec);
-    onChange({ subtitleBlocks: blocks, subtitlesEnabled: true });
-    toast.success(`Distribuidos ${blocks.length} bloques (ajustá los tiempos)`);
+    importSrtText(config.subtitleScript);
+  };
+
+  const handleSrtFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      importSrtText(text);
+    } catch (err) {
+      toast.error("No se pudo leer el archivo", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const s = config.subtitleStyle;
@@ -831,53 +823,48 @@ const SubtitlesEditor: React.FC<{
         onChange={(v) => onChange({ subtitlesEnabled: v })}
       />
 
-      <Field label="Guión completo (pegalo entero)">
+      <Field label="Pegá el .srt (o subilo abajo)">
         <textarea
           value={config.subtitleScript}
           onChange={(e) => onChange({ subtitleScript: e.target.value })}
-          rows={6}
-          placeholder="Pegá el texto que vas a narrar en el video. Después tocá 'Sincronizar con voiceover' y los subtítulos quedan calzados al audio."
+          rows={8}
+          placeholder={"1\n00:00:00,000 --> 00:00:03,000\nPrimer subtítulo\n\n2\n00:00:03,000 --> 00:00:05,000\nSegundo subtítulo"}
           className="w-full font-mono text-xs brutal-border rounded-none bg-paper p-3 outline-none resize-y"
         />
       </Field>
 
       <div className="grid grid-cols-2 gap-2">
         <button
-          onClick={handleAutoSync}
-          disabled={syncing}
-          className="brutal-border bg-ember text-paper py-3 px-3 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Sparkles className="h-4 w-4" />
-          {syncing ? "Sincronizando…" : "Sincronizar con voz"}
-        </button>
-        <button
-          onClick={handleDistribute}
-          disabled={syncing}
-          className="brutal-border bg-ink text-paper py-3 px-3 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember disabled:opacity-50"
+          onClick={handleImportPasted}
+          className="brutal-border bg-ember text-paper py-3 px-3 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:opacity-90"
         >
           <Captions className="h-4 w-4" />
-          Distribuir uniforme
+          Importar SRT pegado
         </button>
+        <button
+          onClick={() => srtFileInputRef.current?.click()}
+          className="brutal-border bg-ink text-paper py-3 px-3 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ember"
+        >
+          <FileUp className="h-4 w-4" />
+          Subir .srt
+        </button>
+        <input
+          ref={srtFileInputRef}
+          type="file"
+          accept=".srt,text/plain,text/srt,application/x-subrip"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleSrtFile(file);
+            e.target.value = "";
+          }}
+        />
       </div>
 
-      {syncing && progress && (
-        <div className="brutal-border bg-concrete p-3 space-y-2">
-          <div className="flex justify-between font-mono text-[10px] tracking-wide">
-            <span>{progress.message}</span>
-            <span>{progress.pct.toFixed(0)}%</span>
-          </div>
-          <div className="h-2 bg-paper brutal-border">
-            <div className="h-full bg-ember transition-[width] duration-200" style={{ width: `${progress.pct}%` }} />
-          </div>
-        </div>
-      )}
-
-      {!syncing && config.subtitleScript && !config.audioDataUrl && (
-        <p className="text-[10px] font-mono text-muted-foreground">
-          Tip: subí un voiceover en <strong>Anim · Audio</strong> y la sincronización
-          automática usa Whisper para calzar palabras con el audio.
-        </p>
-      )}
+      <p className="text-[10px] font-mono text-muted-foreground">
+        Generá el .srt por fuera (Whisper en Colab, etc.) y pegalo o subilo. Los
+        bloques se ordenan abajo y podés editar texto y tiempos uno por uno.
+      </p>
 
       {/* Block list */}
       {config.subtitleBlocks.length > 0 && (
