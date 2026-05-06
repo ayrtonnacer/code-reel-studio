@@ -183,4 +183,11 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
       backgroundColor: "#ffffff",
     },
   },
+  // Base color only — the animated blobs are rendered by LiquidGradientBackground
+  // in CodeComposition.tsx using Remotion's useCurrentFrame() for export compatibility.
+  "liquid-gradient": {
+    css: {
+      backgroundColor: "#10060a",
+    },
+  },
 };

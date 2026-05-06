@@ -14,6 +14,7 @@ import type {
   BackgroundStyle,
   GradientDirection,
   Language,
+  LiquidGradientConfig,
   SnippetConfig,
   SubtitleBlock,
   Theme,
@@ -68,6 +69,7 @@ const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
   { value: "custom-gradient", label: "Custom Gradient" },
   { value: "vercel-grain", label: "Vercel Grain" },
   { value: "chrome-flat", label: "Chrome Flat" },
+  { value: "liquid-gradient", label: "Liquid Gradient ✦" },
 ];
 
 const DIRECTIONS: { value: GradientDirection; label: string }[] = [
@@ -305,6 +307,69 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </SelectContent>
           </Select>
         </Field>
+
+        {config.background === "liquid-gradient" && (
+          <div className="space-y-4 brutal-border bg-concrete p-4">
+            <Label className="font-mono text-xs tracking-wide text-muted-foreground">
+              Liquid gradient · 4 blobs
+            </Label>
+            <div className="grid grid-cols-2 gap-3">
+              {([0, 1, 2, 3] as const).map((i) => (
+                <ColorField
+                  key={i}
+                  label={`Blob ${i + 1}`}
+                  value={config.liquidGradient.colors[i]}
+                  onChange={(c) => {
+                    const next = [...config.liquidGradient.colors] as LiquidGradientConfig["colors"];
+                    next[i] = c;
+                    onChange({ liquidGradient: { ...config.liquidGradient, colors: next } });
+                  }}
+                />
+              ))}
+            </div>
+            <ColorField
+              label="Base background"
+              value={config.liquidGradient.bgColor}
+              onChange={(bgColor) =>
+                onChange({ liquidGradient: { ...config.liquidGradient, bgColor } })
+              }
+            />
+            <Field label={`Blur · ${config.liquidGradient.blur}px`}>
+              <Slider
+                value={[config.liquidGradient.blur]}
+                min={20}
+                max={140}
+                step={2}
+                onValueChange={([v]) =>
+                  onChange({ liquidGradient: { ...config.liquidGradient, blur: v } })
+                }
+              />
+            </Field>
+            {/* Live preview swatch */}
+            <div
+              className="h-16 brutal-border overflow-hidden"
+              style={{ background: config.liquidGradient.bgColor, position: "relative" }}
+            >
+              {config.liquidGradient.colors.map((color, i) => (
+                <div
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    width: "60%",
+                    height: "120%",
+                    borderRadius: "999px",
+                    mixBlendMode: "screen",
+                    opacity: 0.85,
+                    background: `radial-gradient(circle at center, ${color} 0%, transparent 60%)`,
+                    filter: `blur(${Math.round(config.liquidGradient.blur * 0.15)}px)`,
+                    top: i < 2 ? "-20%" : "40%",
+                    left: i % 2 === 0 ? "-10%" : "40%",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         {config.background === "custom-gradient" && (
           <div className="space-y-4 brutal-border bg-concrete p-4">

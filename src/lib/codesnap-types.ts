@@ -34,7 +34,8 @@ export type BackgroundStyle =
   | "duotone-pop"
   | "custom-gradient"
   | "vercel-grain"
-  | "chrome-flat";
+  | "chrome-flat"
+  | "liquid-gradient";
 
 export type GradientDirection =
   | "to right"
@@ -90,6 +91,12 @@ export interface CustomGradient {
   from: string; // hex
   to: string; // hex
   direction: GradientDirection;
+}
+
+export interface LiquidGradientConfig {
+  colors: [string, string, string, string]; // 4 blob hex colors
+  blur: number;    // CSS blur radius in pixels
+  bgColor: string; // base canvas background hex
 }
 
 export interface SnippetConfig {
@@ -152,6 +159,8 @@ export interface SnippetConfig {
   subtitleScript: string;          // raw pasted script (kept so user can re-sync)
   subtitleBlocks: SubtitleBlock[]; // generated/edited blocks shown on screen
   subtitleStyle: SubtitleStyle;
+  // liquid gradient background
+  liquidGradient: LiquidGradientConfig;
 }
 
 export interface SubtitleBlock {
@@ -256,6 +265,11 @@ export const DEFAULT_CONFIG: SnippetConfig = {
     fontWeight: 800,
     position: "bottom",
   },
+  liquidGradient: {
+    colors: ["#ff8a00", "#ff2d55", "#7b2cff", "#ff5e2b"],
+    blur: 70,
+    bgColor: "#10060a",
+  },
 };
 
 export const FPS = 30;
@@ -285,6 +299,7 @@ export interface NarrativeOpts {
   act1CodeLength: number;
   narrativeMap: Map<number, string>;
   narrativeLineIndices: Set<number>;
+  introLineIndices?: Set<number>;
 }
 
 export function computeLinePanTimings(
@@ -390,7 +405,8 @@ export function computeDurationFrames(cfg: SnippetConfig, narrativeOpts?: Narrat
     const panTimings = computeLinePanTimings(
       cfg,
       narrativeOpts?.narrativeMap,
-      narrativeOpts?.narrativeLineIndices
+      narrativeOpts?.narrativeLineIndices,
+      narrativeOpts?.introLineIndices,
     );
     // Count only non-narrative lines for snap gaps
     const nonNarrativeCount = narrativeOpts
@@ -442,7 +458,8 @@ export function computeVideoTimings(cfg: SnippetConfig, narrativeOpts?: Narrativ
     const panTimings = computeLinePanTimings(
       cfg,
       narrativeOpts?.narrativeMap,
-      narrativeOpts?.narrativeLineIndices
+      narrativeOpts?.narrativeLineIndices,
+      narrativeOpts?.introLineIndices,
     );
     const nonNarrativeCount = narrativeOpts
       ? panTimings.filter(t => t.readFrames > 0).length

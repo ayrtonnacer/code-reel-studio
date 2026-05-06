@@ -224,7 +224,7 @@ function buildAudioSources(config: SnippetConfig, totalFrames: number, narrative
     if (config.scanEnabled) {
       const modeZoomFrames = isHighlightStatic ? 0 : SCAN_ZOOM_FRAMES;
       const panStartSec = typingEndSec + SCAN_PRE_PAUSE_FRAMES / FPS + modeZoomFrames / FPS;
-      const panTimings = computeLinePanTimings(config, narrativeOpts.narrativeMap, narrativeOpts.narrativeLineIndices);
+      const panTimings = computeLinePanTimings(config, narrativeOpts.narrativeMap, narrativeOpts.narrativeLineIndices, narrativeOpts.introLineIndices);
       const nonNarrativeTimings = panTimings.filter(t => t.readFrames > 0);
       let sfxCursor = 0;
       for (let i = 0; i < nonNarrativeTimings.length; i++) {
@@ -467,6 +467,7 @@ export function useVideoExport() {
           act1CodeLength: wrappedAct1Code.length,
           narrativeMap: narrativeInfo.narrativeMap,
           narrativeLineIndices: narrativeInfo.narrativeLineIndices,
+          introLineIndices: narrativeInfo.introLineIndices,
         };
 
         const totalFrames = computeDurationFrames(config, narrativeOpts);

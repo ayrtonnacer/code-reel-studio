@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
-import type { SnippetConfig } from "@/lib/codesnap-types";
+import type { LiquidGradientConfig, SnippetConfig } from "@/lib/codesnap-types";
 import {
   buildBackgroundCss,
   computeLinePanTimings,
@@ -15,6 +15,57 @@ import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
 import { parseNarrative, autoWrapCode, getCommentLinePrefix } from "@/lib/codesnap-narrative";
+
+// ── Liquid Gradient Background ────────────────────────────────────────────────
+// Animated blob background compatible with both Remotion preview and frame-by-frame
+// export. CSS keyframes can't be used here because html-to-image captures discrete
+// frames — instead we drive each blob's position with sinusoidal math per frame.
+const LiquidGradientBackground: React.FC<{ cfg: LiquidGradientConfig }> = ({ cfg }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame / fps;
+  // Smooth cosine oscillation: returns 0→1→0 over one period (ease-in-out feel).
+  const osc = (period: number, phaseOffset = 0) =>
+    (1 - Math.cos(((t / period) + phaseOffset) * Math.PI * 2)) / 2;
+
+  const blobs: Array<{
+    p: number;
+    pos: React.CSSProperties;
+    dx: number; dy: number; ds: number;
+  }> = [
+    { p: osc(14, 0),    pos: { top: "-10%",  left: "-10%"  }, dx:  12, dy:   8, ds: 0.15 },
+    { p: osc(18, 0.33), pos: { top:  "0",    right: "-10%" }, dx:  -8, dy:  10, ds: 0.20 },
+    { p: osc(16, 0.66), pos: { bottom: "-20%", left:  "10%"}, dx:  10, dy: -10, ds: 0.12 },
+    { p: osc(20, 1.0),  pos: { bottom: "-10%", right: "10%"}, dx: -10, dy:  -6, ds: 0.18 },
+  ];
+
+  return (
+    <AbsoluteFill style={{ background: cfg.bgColor, overflow: "hidden" }}>
+      {blobs.map((b, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            ...b.pos,
+            // ~40vmax mapped to 1080×1920: use 76% wide × 43% tall
+            width: "76%",
+            height: "43%",
+            borderRadius: "999px",
+            mixBlendMode: "screen",
+            opacity: 0.85,
+            background: `radial-gradient(circle at center, ${cfg.colors[i]} 0%, transparent 60%)`,
+            filter: `blur(${cfg.blur}px)`,
+            transform: `translate(${b.p * b.dx}%, ${b.p * b.dy}%) scale(${1 + b.p * b.ds})`,
+          }}
+        />
+      ))}
+      {/* Vignette overlay */}
+      <AbsoluteFill style={{
+        background: "radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.22) 100%)",
+      }} />
+    </AbsoluteFill>
+  );
+};
 
 interface Props {
   config: SnippetConfig;
@@ -175,6 +226,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       act1CodeLength: act1TotalChars,
       narrativeMap: narrativeInfo.narrativeMap,
       narrativeLineIndices: narrativeInfo.narrativeLineIndices,
+      introLineIndices: narrativeInfo.introLineIndices,
     }),
     [config, act1TotalChars, narrativeInfo]
   );
@@ -542,8 +594,21 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     return `rgba(${r},${g},${b},${opacity})`;
   };
 
+  const isLiquidGradient = config.background === "liquid-gradient";
+
   return (
-    <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
+    <AbsoluteFill style={
+      config.backgroundImageDataUrl
+        ? undefined
+        : isLiquidGradient
+          ? { background: config.liquidGradient.bgColor }
+          : bg.css
+    }>
+      {/* Liquid gradient animated background */}
+      {isLiquidGradient && !config.backgroundImageDataUrl && (
+        <LiquidGradientBackground cfg={config.liquidGradient} />
+      )}
+
       {/* Background image */}
       {config.backgroundImageDataUrl && (
         <>
@@ -1033,24 +1098,28 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               color: s.color,
               textAlign: "center",
               fontWeight: s.fontWeight,
-              // letter-spacing kept at "normal" — negative kerning collides
-              // with html-to-image's SVG rasterization in MP4 export.
               letterSpacing: "normal",
               textShadow,
-              // Pre-split into lines below; each line renders nowrap so the
-              // exporter can't re-wrap with fallback-font metrics.
               wordBreak: "normal",
               whiteSpace: "normal",
+              // Hard-cap at the outer wrapper width so text never bleeds outside the frame.
+              width: "100%",
+              maxWidth: width - 120,
+              overflow: "hidden",
             }}>
               {(() => {
-                // Estimate chars/line from font size + 88% canvas width.
-                // 0.58em/glyph leaves headroom for fallback fonts during export.
-                const usableWidth = width * 0.88 - (s.bgEnabled ? 52 : 0);
-                const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.58)));
+                // Use 0.62em/glyph (vs 0.58) to account for Plus Jakarta Sans bold
+                // being wider than regular weight — prevents overflow into margins.
+                // Limit usable width to 85% of canvas for extra safety margin.
+                const usableWidth = width * 0.85 - (s.bgEnabled ? 52 : 0);
+                const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.62)));
                 const split = splitNoWidow(active.text, charsPerLine, 14);
                 const lines = split ?? [active.text];
                 return lines.map((line, i) => (
-                  <div key={i} style={{ whiteSpace: "nowrap" }}>{line}</div>
+                  // nowrap per line prevents the SVG rasterizer (html-to-image export)
+                  // from re-wrapping with fallback-font metrics. maxWidth + overflow
+                  // clips any residual overflow without shifting layout.
+                  <div key={i} style={{ whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden" }}>{line}</div>
                 ));
               })()}
             </div>
