@@ -311,7 +311,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
         {config.background === "liquid-gradient" && (
           <div className="space-y-4 brutal-border bg-concrete p-4">
             <Label className="font-mono text-xs tracking-wide text-muted-foreground">
-              Liquid gradient · color palette
+              Liquid Glass · light source colors
             </Label>
             <div className="grid grid-cols-2 gap-3">
               {([0, 1, 2, 3] as const).map((i) => (
