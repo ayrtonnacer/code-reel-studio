@@ -16,52 +16,121 @@ import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
 import { parseNarrative, autoWrapCode, getCommentLinePrefix } from "@/lib/codesnap-narrative";
 
+// ── Multi-line subtitle word-wrap ────────────────────────────────────────────
+// Iteratively splits text at word boundaries so every line fits within maxChars,
+// then applies an anti-widow pass (last line must have ≥ 2 words).
+function wrapTextToLines(text: string, maxChars: number): string[] {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return [trimmed];
+
+  const lines: string[] = [];
+  let rem = trimmed;
+  while (rem.length > maxChars) {
+    let cut = rem.lastIndexOf(" ", maxChars);
+    if (cut <= 0) cut = maxChars; // no space — hard-break to avoid infinite loop
+    lines.push(rem.slice(0, cut).trimEnd());
+    rem = rem.slice(cut).trimStart();
+  }
+  if (rem) lines.push(rem);
+
+  // Anti-widow: last line must have ≥ 2 words
+  if (lines.length >= 2) {
+    const lastWords = lines[lines.length - 1].split(/\s+/).filter(Boolean);
+    if (lastWords.length === 1) {
+      const prev = lines[lines.length - 2];
+      const sp = prev.lastIndexOf(" ");
+      if (sp > 12) {
+        lines[lines.length - 2] = prev.slice(0, sp).trimEnd();
+        lines[lines.length - 1] = prev.slice(sp + 1) + " " + lines[lines.length - 1];
+      }
+    }
+  }
+  return lines;
+}
+
 // ── Liquid Gradient Background ────────────────────────────────────────────────
-// Animated blob background compatible with both Remotion preview and frame-by-frame
-// export. CSS keyframes can't be used here because html-to-image captures discrete
-// frames — instead we drive each blob's position with sinusoidal math per frame.
+// Frame-accurate animated background: works identically in Remotion preview and
+// frame-by-frame export (html-to-image doesn't execute CSS @keyframes).
+//
+// Motion model: Lissajous paths — each blob's X and Y are driven by independent
+// sine/cosine pairs at different periods, producing non-repeating organic trajectories
+// that never look like simple circles or orbits.
+//
+// Layer structure:
+//   · 4 large slow blobs  — low-frequency ambiance base
+//   · 4 medium blobs      — mid-frequency interaction
+//   · 2 small fast blobs  — high-frequency bright highlights
 const LiquidGradientBackground: React.FC<{ cfg: LiquidGradientConfig }> = ({ cfg }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
-  // Smooth cosine oscillation: returns 0→1→0 over one period (ease-in-out feel).
-  const osc = (period: number, phaseOffset = 0) =>
-    (1 - Math.cos(((t / period) + phaseOffset) * Math.PI * 2)) / 2;
+  const TAU = Math.PI * 2;
 
-  const blobs: Array<{
-    p: number;
-    pos: React.CSSProperties;
-    dx: number; dy: number; ds: number;
-  }> = [
-    { p: osc(14, 0),    pos: { top: "-10%",  left: "-10%"  }, dx:  12, dy:   8, ds: 0.15 },
-    { p: osc(18, 0.33), pos: { top:  "0",    right: "-10%" }, dx:  -8, dy:  10, ds: 0.20 },
-    { p: osc(16, 0.66), pos: { bottom: "-20%", left:  "10%"}, dx:  10, dy: -10, ds: 0.12 },
-    { p: osc(20, 1.0),  pos: { bottom: "-10%", right: "10%"}, dx: -10, dy:  -6, ds: 0.18 },
+  // Lissajous components — two independent frequencies per axis create
+  // non-repeating figure-8/spiral paths (much more organic than cosine alone).
+  const sx = (p1: number, p2: number, ph: number) =>
+    Math.sin((t / p1 + ph) * TAU) * 0.6 + Math.cos((t / p2 + ph * 1.4) * TAU) * 0.4;
+  const sy = (p1: number, p2: number, ph: number) =>
+    Math.cos((t / p1 + ph + 0.3) * TAU) * 0.55 + Math.sin((t / p2 + ph * 0.7) * TAU) * 0.45;
+
+  type Blob = {
+    cx: number; cy: number; // anchor position (% of container)
+    w: number;  h: number;  // size (%)
+    mx: number; my: number; // max travel amplitude (%)
+    p1: number; p2: number; // Lissajous periods (seconds)
+    ph: number;             // phase offset
+    ci: number;             // color index 0-3
+    blr: number;            // blur multiplier
+    op: number;             // opacity
+  };
+
+  const blobs: Blob[] = [
+    // ── 4 large anchoring blobs (slow, spread across quadrants) ──
+    { cx:  5, cy:  5, w: 82, h: 50, mx: 20, my: 14, p1:  9, p2: 13, ph: 0.00, ci: 0, blr: 1.00, op: 0.78 },
+    { cx: 48, cy:  3, w: 78, h: 48, mx: 18, my: 16, p1: 11, p2:  8, ph: 0.50, ci: 1, blr: 1.00, op: 0.72 },
+    { cx:  3, cy: 52, w: 80, h: 50, mx: 16, my: 15, p1:  7, p2: 12, ph: 1.00, ci: 2, blr: 1.00, op: 0.72 },
+    { cx: 45, cy: 50, w: 76, h: 48, mx: 17, my: 17, p1: 10, p2:  7, ph: 1.50, ci: 3, blr: 1.00, op: 0.70 },
+    // ── 4 medium accent blobs (faster, more dynamic) ──
+    { cx: 25, cy: 20, w: 48, h: 32, mx: 26, my: 22, p1:  5, p2:  8, ph: 0.25, ci: 1, blr: 0.60, op: 0.62 },
+    { cx: 60, cy: 38, w: 44, h: 30, mx: 24, my: 24, p1:  6, p2:  5, ph: 0.75, ci: 2, blr: 0.55, op: 0.58 },
+    { cx: 15, cy: 62, w: 46, h: 30, mx: 22, my: 20, p1:  4, p2:  7, ph: 1.25, ci: 0, blr: 0.55, op: 0.55 },
+    { cx: 65, cy: 65, w: 42, h: 28, mx: 25, my: 22, p1:  5, p2:  4, ph: 1.75, ci: 3, blr: 0.50, op: 0.55 },
+    // ── 2 small fast bright highlights ──
+    { cx: 42, cy: 32, w: 26, h: 17, mx: 32, my: 28, p1:  3, p2:  5, ph: 0.40, ci: 0, blr: 0.32, op: 0.70 },
+    { cx: 58, cy: 55, w: 22, h: 15, mx: 28, my: 30, p1:  4, p2:  3, ph: 1.10, ci: 2, blr: 0.30, op: 0.65 },
   ];
 
   return (
     <AbsoluteFill style={{ background: cfg.bgColor, overflow: "hidden" }}>
-      {blobs.map((b, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            ...b.pos,
-            // ~40vmax mapped to 1080×1920: use 76% wide × 43% tall
-            width: "76%",
-            height: "43%",
-            borderRadius: "999px",
-            mixBlendMode: "screen",
-            opacity: 0.85,
-            background: `radial-gradient(circle at center, ${cfg.colors[i]} 0%, transparent 60%)`,
-            filter: `blur(${cfg.blur}px)`,
-            transform: `translate(${b.p * b.dx}%, ${b.p * b.dy}%) scale(${1 + b.p * b.ds})`,
-          }}
-        />
-      ))}
-      {/* Vignette overlay */}
+      {blobs.map((b, i) => {
+        const ox = sx(b.p1, b.p2, b.ph);
+        const oy = sy(b.p1, b.p2, b.ph);
+        // Subtle scale pulse tied to motion magnitude
+        const sc = 1 + Math.abs(ox * 0.04 + oy * 0.04);
+        return (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: `${b.cx}%`,
+              top: `${b.cy}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+              borderRadius: "999px",
+              mixBlendMode: "screen",
+              opacity: b.op,
+              background: `radial-gradient(circle at center, ${cfg.colors[b.ci]} 0%, transparent 62%)`,
+              filter: `blur(${cfg.blur * b.blr}px)`,
+              transform: `translate(${ox * b.mx}%, ${oy * b.my}%) scale(${sc})`,
+              willChange: "transform",
+            }}
+          />
+        );
+      })}
+      {/* Edge vignette — darkens corners to keep text readable */}
       <AbsoluteFill style={{
-        background: "radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.22) 100%)",
+        background: "radial-gradient(ellipse 80% 70% at 50% 50%, transparent 40%, rgba(0,0,0,0.45) 100%)",
+        pointerEvents: "none",
       }} />
     </AbsoluteFill>
   );
@@ -1108,17 +1177,16 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               overflow: "hidden",
             }}>
               {(() => {
-                // Use 0.62em/glyph (vs 0.58) to account for Plus Jakarta Sans bold
-                // being wider than regular weight — prevents overflow into margins.
-                // Limit usable width to 85% of canvas for extra safety margin.
-                const usableWidth = width * 0.85 - (s.bgEnabled ? 52 : 0);
+                // 0.62em/glyph accounts for Plus Jakarta Sans weight-800 being
+                // wider than regular. 83% canvas width gives a generous margin
+                // so lines never reach the frame edge.
+                const usableWidth = width * 0.83 - (s.bgEnabled ? 52 : 0);
                 const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.62)));
-                const split = splitNoWidow(active.text, charsPerLine, 14);
-                const lines = split ?? [active.text];
+                // wrapTextToLines handles arbitrarily long phrases (not just 2-line split).
+                const lines = wrapTextToLines(active.text, charsPerLine);
                 return lines.map((line, i) => (
                   // nowrap per line prevents the SVG rasterizer (html-to-image export)
-                  // from re-wrapping with fallback-font metrics. maxWidth + overflow
-                  // clips any residual overflow without shifting layout.
+                  // from re-wrapping with fallback-font metrics.
                   <div key={i} style={{ whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden" }}>{line}</div>
                 ));
               })()}

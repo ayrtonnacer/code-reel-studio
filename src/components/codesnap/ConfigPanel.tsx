@@ -311,13 +311,13 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
         {config.background === "liquid-gradient" && (
           <div className="space-y-4 brutal-border bg-concrete p-4">
             <Label className="font-mono text-xs tracking-wide text-muted-foreground">
-              Liquid gradient · 4 blobs
+              Liquid gradient · color palette
             </Label>
             <div className="grid grid-cols-2 gap-3">
               {([0, 1, 2, 3] as const).map((i) => (
                 <ColorField
                   key={i}
-                  label={`Blob ${i + 1}`}
+                  label={`Color ${i + 1}`}
                   value={config.liquidGradient.colors[i]}
                   onChange={(c) => {
                     const next = [...config.liquidGradient.colors] as LiquidGradientConfig["colors"];
@@ -345,25 +345,34 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
                 }
               />
             </Field>
-            {/* Live preview swatch */}
+            {/* Static preview swatch — 8 overlapping blobs matching the runtime layout */}
             <div
-              className="h-16 brutal-border overflow-hidden"
+              className="h-24 brutal-border overflow-hidden"
               style={{ background: config.liquidGradient.bgColor, position: "relative" }}
             >
-              {config.liquidGradient.colors.map((color, i) => (
+              {[
+                { cx:  5, cy:  5, w: 82, h: 170, ci: 0, op: 0.78 },
+                { cx: 48, cy:  3, w: 78, h: 160, ci: 1, op: 0.72 },
+                { cx:  3, cy: 52, w: 80, h: 170, ci: 2, op: 0.72 },
+                { cx: 45, cy: 50, w: 76, h: 160, ci: 3, op: 0.70 },
+                { cx: 25, cy: 20, w: 48, h:  90, ci: 1, op: 0.62 },
+                { cx: 60, cy: 38, w: 44, h:  85, ci: 2, op: 0.58 },
+                { cx: 15, cy: 62, w: 46, h:  90, ci: 0, op: 0.55 },
+                { cx: 65, cy: 65, w: 42, h:  80, ci: 3, op: 0.55 },
+              ].map((b, i) => (
                 <div
                   key={i}
                   style={{
                     position: "absolute",
-                    width: "60%",
-                    height: "120%",
+                    left: `${b.cx}%`,
+                    top: `${b.cy}%`,
+                    width: `${b.w}%`,
+                    height: `${b.h}%`,
                     borderRadius: "999px",
                     mixBlendMode: "screen",
-                    opacity: 0.85,
-                    background: `radial-gradient(circle at center, ${color} 0%, transparent 60%)`,
-                    filter: `blur(${Math.round(config.liquidGradient.blur * 0.15)}px)`,
-                    top: i < 2 ? "-20%" : "40%",
-                    left: i % 2 === 0 ? "-10%" : "40%",
+                    opacity: b.op,
+                    background: `radial-gradient(circle at center, ${config.liquidGradient.colors[b.ci]} 0%, transparent 62%)`,
+                    filter: `blur(${Math.round(config.liquidGradient.blur * 0.18)}px)`,
                   }}
                 />
               ))}

@@ -266,9 +266,9 @@ export const DEFAULT_CONFIG: SnippetConfig = {
     position: "bottom",
   },
   liquidGradient: {
-    colors: ["#ff8a00", "#ff2d55", "#7b2cff", "#ff5e2b"],
-    blur: 70,
-    bgColor: "#10060a",
+    colors: ["#00e5ff", "#bf00ff", "#ff2d55", "#00ff9d"],
+    blur: 80,
+    bgColor: "#060010",
   },
 };
 
