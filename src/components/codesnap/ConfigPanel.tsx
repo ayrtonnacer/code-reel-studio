@@ -14,15 +14,15 @@ import type {
   BackgroundStyle,
   GradientDirection,
   Language,
-  LiquidGradientConfig,
   SnippetConfig,
   SubtitleBlock,
   Theme,
 } from "@/lib/codesnap-types";
 import { MUSIC_PRESETS } from "@/lib/codesnap-sfx";
 import { parseSrt } from "@/lib/codesnap-subtitles";
-import { Captions, FileUp, Image, Mic, Music, Trash2, Upload, X } from "lucide-react";
+import { Captions, FileUp, Image, Mic, Music, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { fetchRandomLiquidMetalPhoto } from "@/lib/codesnap-unsplash";
 import { toast } from "sonner";
 
 interface Props {
@@ -69,7 +69,6 @@ const BACKGROUNDS: { value: BackgroundStyle; label: string }[] = [
   { value: "custom-gradient", label: "Custom Gradient" },
   { value: "vercel-grain", label: "Vercel Grain" },
   { value: "chrome-flat", label: "Chrome Flat" },
-  { value: "liquid-gradient", label: "Liquid Gradient ✦" },
 ];
 
 const DIRECTIONS: { value: GradientDirection; label: string }[] = [
@@ -86,6 +85,26 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   const audioInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
+  const [unsplashLoading, setUnsplashLoading] = useState(false);
+
+  const handleUnsplashRandom = async () => {
+    setUnsplashLoading(true);
+    try {
+      const { dataUrl, credit } = await fetchRandomLiquidMetalPhoto();
+      onChange({
+        backgroundImageDataUrl: dataUrl,
+        backgroundImageName: `Unsplash · ${credit}`,
+        backgroundImageOverlay: 0.25,
+      });
+      toast.success("Foto cargada", { description: `Foto de ${credit} · Unsplash` });
+    } catch (err) {
+      toast.error("Error al obtener la foto", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setUnsplashLoading(false);
+    }
+  };
 
   const loadAudioFile = (file: File, onLoad: (dataUrl: string) => void) => {
     if (file.size > 30 * 1024 * 1024) {
@@ -264,6 +283,14 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             <Upload className="h-4 w-4" />
             {config.backgroundImageName ?? "Upload image (JPG/PNG/WEBP)"}
           </button>
+          <button
+            onClick={handleUnsplashRandom}
+            disabled={unsplashLoading}
+            className="w-full brutal-border bg-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ink hover:text-paper transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`h-4 w-4 ${unsplashLoading ? "animate-spin" : ""}`} />
+            {unsplashLoading ? "Buscando..." : "Metal líquido · Unsplash"}
+          </button>
           {config.backgroundImageDataUrl && (
             <>
               <div
@@ -307,78 +334,6 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             </SelectContent>
           </Select>
         </Field>
-
-        {config.background === "liquid-gradient" && (
-          <div className="space-y-4 brutal-border bg-concrete p-4">
-            <Label className="font-mono text-xs tracking-wide text-muted-foreground">
-              Liquid Glass · light source colors
-            </Label>
-            <div className="grid grid-cols-2 gap-3">
-              {([0, 1, 2, 3] as const).map((i) => (
-                <ColorField
-                  key={i}
-                  label={`Color ${i + 1}`}
-                  value={config.liquidGradient.colors[i]}
-                  onChange={(c) => {
-                    const next = [...config.liquidGradient.colors] as LiquidGradientConfig["colors"];
-                    next[i] = c;
-                    onChange({ liquidGradient: { ...config.liquidGradient, colors: next } });
-                  }}
-                />
-              ))}
-            </div>
-            <ColorField
-              label="Base background"
-              value={config.liquidGradient.bgColor}
-              onChange={(bgColor) =>
-                onChange({ liquidGradient: { ...config.liquidGradient, bgColor } })
-              }
-            />
-            <Field label={`Blur · ${config.liquidGradient.blur}px`}>
-              <Slider
-                value={[config.liquidGradient.blur]}
-                min={20}
-                max={140}
-                step={2}
-                onValueChange={([v]) =>
-                  onChange({ liquidGradient: { ...config.liquidGradient, blur: v } })
-                }
-              />
-            </Field>
-            {/* Static preview swatch — 8 overlapping blobs matching the runtime layout */}
-            <div
-              className="h-24 brutal-border overflow-hidden"
-              style={{ background: config.liquidGradient.bgColor, position: "relative" }}
-            >
-              {[
-                { cx:  5, cy:  5, w: 82, h: 170, ci: 0, op: 0.78 },
-                { cx: 48, cy:  3, w: 78, h: 160, ci: 1, op: 0.72 },
-                { cx:  3, cy: 52, w: 80, h: 170, ci: 2, op: 0.72 },
-                { cx: 45, cy: 50, w: 76, h: 160, ci: 3, op: 0.70 },
-                { cx: 25, cy: 20, w: 48, h:  90, ci: 1, op: 0.62 },
-                { cx: 60, cy: 38, w: 44, h:  85, ci: 2, op: 0.58 },
-                { cx: 15, cy: 62, w: 46, h:  90, ci: 0, op: 0.55 },
-                { cx: 65, cy: 65, w: 42, h:  80, ci: 3, op: 0.55 },
-              ].map((b, i) => (
-                <div
-                  key={i}
-                  style={{
-                    position: "absolute",
-                    left: `${b.cx}%`,
-                    top: `${b.cy}%`,
-                    width: `${b.w}%`,
-                    height: `${b.h}%`,
-                    borderRadius: "999px",
-                    mixBlendMode: "screen",
-                    opacity: b.op,
-                    background: `radial-gradient(circle at center, ${config.liquidGradient.colors[b.ci]} 0%, transparent 62%)`,
-                    filter: `blur(${Math.round(config.liquidGradient.blur * 0.18)}px)`,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
 
         {config.background === "custom-gradient" && (
           <div className="space-y-4 brutal-border bg-concrete p-4">

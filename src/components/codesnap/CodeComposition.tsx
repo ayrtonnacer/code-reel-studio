@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
-import type { LiquidGradientConfig, SnippetConfig } from "@/lib/codesnap-types";
+import type { SnippetConfig } from "@/lib/codesnap-types";
 import {
   buildBackgroundCss,
   computeLinePanTimings,
@@ -48,191 +48,6 @@ function wrapTextToLines(text: string, maxChars: number): string[] {
   return lines;
 }
 
-// ── Liquid Glass Background ───────────────────────────────────────────────────
-// True "liquid glass" effect: 7 composited layers rendered per-frame via
-// useCurrentFrame() so it works identically in Remotion preview and export.
-//
-// Layers (bottom → top):
-//   1. Ambient colored glow    — deep saturated light source, screen blend
-//   2. Glass body shapes       — white semi-transparent organic blobs
-//   3. Glass surface highlights — sharp bright glare on blob tops
-//   4. Chromatic fringe        — thin colored border, simulates refraction
-//   5. Sweeping caustic        — slow light streak crossing the scene
-//   6. Film grain              — SVG feTurbulence noise overlay
-//   7. Edge vignette           — darkens periphery for depth
-//
-// Shape morphing: CSS border-radius with 8 values (4H + 4V) driven by
-// independent sinusoids per corner → smooth organic blob silhouettes.
-// Motion: Lissajous paths (two frequencies per axis) → non-circular trajectories.
-const LiquidGradientBackground: React.FC<{ cfg: LiquidGradientConfig }> = ({ cfg }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const t = frame / fps;
-  const TAU = Math.PI * 2;
-
-  // ── helpers ──────────────────────────────────────────────────────────────────
-  // Lissajous: two independent frequencies per axis → irregular organic paths
-  const lx = (p1: number, p2: number, ph: number) =>
-    Math.sin((t / p1 + ph) * TAU) * 0.55 + Math.cos((t / p2 + ph * 1.4) * TAU) * 0.45;
-  const ly = (p1: number, p2: number, ph: number) =>
-    Math.cos((t / p1 + ph + 0.28) * TAU) * 0.50 + Math.sin((t / p2 + ph * 0.75) * TAU) * 0.50;
-
-  // CSS blob shape: 8-value border-radius driven by 4 independent sinusoids.
-  // Each corner oscillates at a different sub-frequency → smooth, non-symmetric morph.
-  const blobBR = (period: number, ph: number): string => {
-    const a = Math.round(40 + Math.sin((t / period         + ph        ) * TAU) * 22);
-    const b = Math.round(38 + Math.cos((t / (period * 1.3) + ph        ) * TAU) * 20);
-    const c = Math.round(36 + Math.sin((t / (period * 0.7) + ph + 0.35) * TAU) * 18);
-    const d = Math.round(42 + Math.cos((t / (period * 1.1) + ph + 0.65) * TAU) * 19);
-    return `${a}% ${100-a}% ${c}% ${100-c}% / ${b}% ${100-b}% ${d}% ${100-d}%`;
-  };
-
-  // ── Layer 1 data: ambient glow blobs ─────────────────────────────────────────
-  const glowBlobs = [
-    { p1: 10, p2: 15, ph: 0.00, cx: 8,  cy:  4, w: 86, h: 56, mx: 16, my: 12, ci: 0, blr: 1.00, op: 0.70 },
-    { p1: 12, p2:  8, ph: 0.50, cx: 44, cy:  3, w: 82, h: 54, mx: 14, my: 14, ci: 1, blr: 1.00, op: 0.64 },
-    { p1:  8, p2: 13, ph: 1.00, cx:  4, cy: 50, w: 84, h: 55, mx: 15, my: 13, ci: 2, blr: 1.00, op: 0.65 },
-    { p1: 11, p2:  7, ph: 1.50, cx: 42, cy: 48, w: 80, h: 52, mx: 15, my: 15, ci: 3, blr: 1.00, op: 0.62 },
-    // Two fast accent glows for energy
-    { p1:  5, p2:  8, ph: 0.25, cx: 22, cy: 18, w: 46, h: 32, mx: 22, my: 20, ci: 1, blr: 0.55, op: 0.55 },
-    { p1:  6, p2:  5, ph: 1.25, cx: 60, cy: 60, w: 44, h: 30, mx: 24, my: 22, ci: 3, blr: 0.50, op: 0.52 },
-  ];
-
-  // ── Layer 2 data: glass body blobs ───────────────────────────────────────────
-  const glassBodies = [
-    { p1: 9,  p2: 14, ph: 0.15, cx:  6, cy:  7, w: 74, h: 50, mx: 12, my: 10, mp: 7.5 },
-    { p1: 11, p2:  8, ph: 0.65, cx: 40, cy: 40, w: 70, h: 47, mx: 11, my: 12, mp: 9.0 },
-    { p1:  7, p2: 11, ph: 1.15, cx: 62, cy: 18, w: 58, h: 40, mx: 13, my: 11, mp: 6.5 },
-  ];
-
-  // ── Layer 3 data: glass highlights (bright glare on surface) ─────────────────
-  const highlights = [
-    { p1: 7,  p2:  9, ph: 0.30, cx: 18, cy: 22, w: 32, h: 22, mx: 18, my: 16, mp: 5.5 },
-    { p1: 9,  p2:  6, ph: 0.85, cx: 55, cy: 55, w: 28, h: 19, mx: 20, my: 18, mp: 4.5 },
-    { p1: 6,  p2: 10, ph: 1.40, cx: 72, cy: 12, w: 24, h: 17, mx: 22, my: 20, mp: 6.0 },
-  ];
-
-  // ── Layer 4 data: chromatic fringe ───────────────────────────────────────────
-  const fringes = [
-    { p1: 10, p2: 15, ph: 0.07, cx: 9,  cy:  5, w: 74, h: 49, mx: 16, my: 12, ci: 0, mp: 7.5 },
-    { p1: 11, p2:  8, ph: 0.57, cx: 42, cy: 41, w: 70, h: 46, mx: 11, my: 12, ci: 1, mp: 9.0 },
-  ];
-
-  // ── Layer 5: sweeping caustic ─────────────────────────────────────────────────
-  const causticX  = (Math.sin((t / 17) * TAU) + 1) / 2; // 0..1, slow sweep
-  const causticY  = (Math.cos((t / 22) * TAU) + 1) / 2;
-  const causticAng = 32 + lx(20, 28, 0.4) * 18;
-
-  return (
-    <AbsoluteFill style={{ background: cfg.bgColor, overflow: "hidden" }}>
-
-      {/* ── 1. Ambient colored glow ── */}
-      {glowBlobs.map((b, i) => {
-        const ox = lx(b.p1, b.p2, b.ph), oy = ly(b.p1, b.p2, b.ph);
-        return (
-          <div key={`glow-${i}`} style={{
-            position: "absolute",
-            left: `${b.cx + ox * b.mx}%`, top: `${b.cy + oy * b.my}%`,
-            width: `${b.w}%`, height: `${b.h}%`,
-            borderRadius: blobBR(b.p1 * 1.1, b.ph),
-            mixBlendMode: "screen",
-            opacity: b.op,
-            background: `radial-gradient(circle at ${38 + ox * 8}% ${38 + oy * 8}%, ${cfg.colors[b.ci]} 0%, transparent 65%)`,
-            filter: `blur(${cfg.blur * b.blr}px)`,
-          }} />
-        );
-      })}
-
-      {/* ── 2. Glass body shapes ── */}
-      {glassBodies.map((b, i) => {
-        const ox = lx(b.p1, b.p2, b.ph), oy = ly(b.p1, b.p2, b.ph);
-        // Glare hotspot moves with motion — simulates light bouncing off surface
-        const glareX = Math.round(32 + ox * 12);
-        const glareY = Math.round(28 + oy * 12);
-        return (
-          <div key={`glass-${i}`} style={{
-            position: "absolute",
-            left: `${b.cx + ox * b.mx}%`, top: `${b.cy + oy * b.my}%`,
-            width: `${b.w}%`, height: `${b.h}%`,
-            borderRadius: blobBR(b.mp, b.ph + 0.2),
-            opacity: 1,
-            background: [
-              // Edge rim — thin bright border gradient
-              `radial-gradient(ellipse at ${glareX}% ${glareY}%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.07) 35%, transparent 62%)`,
-            ].join(", "),
-            filter: `blur(${cfg.blur * 0.20}px)`,
-          }} />
-        );
-      })}
-
-      {/* ── 3. Glass surface highlights (sharp glare) ── */}
-      {highlights.map((b, i) => {
-        const ox = lx(b.p1, b.p2, b.ph), oy = ly(b.p1, b.p2, b.ph);
-        return (
-          <div key={`hl-${i}`} style={{
-            position: "absolute",
-            left: `${b.cx + ox * b.mx}%`, top: `${b.cy + oy * b.my}%`,
-            width: `${b.w}%`, height: `${b.h}%`,
-            borderRadius: blobBR(b.mp * 0.7, b.ph + 0.5),
-            background: `radial-gradient(ellipse at 32% 28%, rgba(255,255,255,0.60) 0%, rgba(255,255,255,0.18) 38%, transparent 65%)`,
-            filter: `blur(${cfg.blur * 0.10}px)`,
-            opacity: 0.22,
-          }} />
-        );
-      })}
-
-      {/* ── 4. Chromatic fringe — refraction color bleed at glass edges ── */}
-      {fringes.map((b, i) => {
-        const ox = lx(b.p1, b.p2, b.ph), oy = ly(b.p1, b.p2, b.ph);
-        return (
-          <div key={`fringe-${i}`} style={{
-            position: "absolute",
-            left: `${b.cx + ox * b.mx + 0.8}%`, top: `${b.cy + oy * b.my + 0.4}%`,
-            width: `${b.w}%`, height: `${b.h}%`,
-            borderRadius: blobBR(b.mp * 0.95, b.ph + 0.04),
-            border: `1.5px solid ${cfg.colors[b.ci]}55`,
-            filter: `blur(${cfg.blur * 0.07}px)`,
-            opacity: 0.45,
-            background: "transparent",
-          }} />
-        );
-      })}
-
-      {/* ── 5. Sweeping light caustic ── */}
-      <div style={{
-        position: "absolute",
-        left: `${-30 + causticX * 135}%`,
-        top:  `${-20 + causticY * 20}%`,
-        width: "26%",
-        height: "145%",
-        background: `linear-gradient(${causticAng}deg,
-          transparent 0%,
-          rgba(255,255,255,0.025) 30%,
-          rgba(255,255,255,0.075) 50%,
-          rgba(255,255,255,0.025) 70%,
-          transparent 100%)`,
-        filter: `blur(${cfg.blur * 0.05}px)`,
-        pointerEvents: "none",
-      }} />
-
-      {/* ── 6. Film grain — SVG feTurbulence noise ── */}
-      <AbsoluteFill style={{
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.88' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E")`,
-        backgroundSize: "300px 300px",
-        opacity: 0.50,
-        mixBlendMode: "overlay",
-        pointerEvents: "none",
-      }} />
-
-      {/* ── 7. Edge vignette ── */}
-      <AbsoluteFill style={{
-        background: "radial-gradient(ellipse 78% 72% at 50% 50%, transparent 42%, rgba(0,0,0,0.58) 100%)",
-        pointerEvents: "none",
-      }} />
-
-    </AbsoluteFill>
-  );
-};
 
 interface Props {
   config: SnippetConfig;
@@ -761,21 +576,8 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     return `rgba(${r},${g},${b},${opacity})`;
   };
 
-  const isLiquidGradient = config.background === "liquid-gradient";
-
   return (
-    <AbsoluteFill style={
-      config.backgroundImageDataUrl
-        ? undefined
-        : isLiquidGradient
-          ? { background: config.liquidGradient.bgColor }
-          : bg.css
-    }>
-      {/* Liquid gradient animated background */}
-      {isLiquidGradient && !config.backgroundImageDataUrl && (
-        <LiquidGradientBackground cfg={config.liquidGradient} />
-      )}
-
+    <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
       {/* Background image */}
       {config.backgroundImageDataUrl && (
         <>

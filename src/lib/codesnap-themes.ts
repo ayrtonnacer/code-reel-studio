@@ -183,11 +183,4 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
       backgroundColor: "#ffffff",
     },
   },
-  // Base color only — LiquidGradientBackground in CodeComposition.tsx renders
-  // all animated layers per-frame (export-safe, no CSS @keyframes).
-  "liquid-gradient": {
-    css: {
-      backgroundColor: "#03030c",
-    },
-  },
 };

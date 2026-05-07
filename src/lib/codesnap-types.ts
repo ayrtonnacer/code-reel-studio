@@ -34,8 +34,7 @@ export type BackgroundStyle =
   | "duotone-pop"
   | "custom-gradient"
   | "vercel-grain"
-  | "chrome-flat"
-  | "liquid-gradient";
+  | "chrome-flat";
 
 export type GradientDirection =
   | "to right"
@@ -93,11 +92,6 @@ export interface CustomGradient {
   direction: GradientDirection;
 }
 
-export interface LiquidGradientConfig {
-  colors: [string, string, string, string]; // 4 blob hex colors
-  blur: number;    // CSS blur radius in pixels
-  bgColor: string; // base canvas background hex
-}
 
 export interface SnippetConfig {
   code: string;
@@ -159,8 +153,6 @@ export interface SnippetConfig {
   subtitleScript: string;          // raw pasted script (kept so user can re-sync)
   subtitleBlocks: SubtitleBlock[]; // generated/edited blocks shown on screen
   subtitleStyle: SubtitleStyle;
-  // liquid gradient background
-  liquidGradient: LiquidGradientConfig;
 }
 
 export interface SubtitleBlock {
@@ -264,11 +256,6 @@ export const DEFAULT_CONFIG: SnippetConfig = {
     bgOpacity: 0.6,
     fontWeight: 800,
     position: "bottom",
-  },
-  liquidGradient: {
-    colors: ["#1400ff", "#ff0090", "#00c8ff", "#7700ff"],
-    blur: 90,
-    bgColor: "#03030c",
   },
 };
 
