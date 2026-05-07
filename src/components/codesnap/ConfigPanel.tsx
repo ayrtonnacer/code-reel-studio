@@ -90,13 +90,13 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
   const handleUnsplashRandom = async () => {
     setUnsplashLoading(true);
     try {
-      const { dataUrl, credit } = await fetchRandomLiquidMetalPhoto();
+      const { imageUrl, credit, creditUrl, unsplashUrl } = await fetchRandomLiquidMetalPhoto();
       onChange({
-        backgroundImageDataUrl: dataUrl,
-        backgroundImageName: `Unsplash · ${credit}`,
+        backgroundImageDataUrl: imageUrl,
+        backgroundImageName: `Photo by ${credit} on Unsplash|${creditUrl}|${unsplashUrl}`,
         backgroundImageOverlay: 0.25,
       });
-      toast.success("Foto cargada", { description: `Foto de ${credit} · Unsplash` });
+      toast.success("Foto cargada", { description: `Foto de ${credit} · Unsplash | ${creditUrl}` });
     } catch (err) {
       toast.error("Error al obtener la foto", {
         description: err instanceof Error ? err.message : String(err),
@@ -289,7 +289,7 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
             className="w-full brutal-border bg-paper py-3 px-4 font-mono text-xs tracking-wide flex items-center justify-center gap-2 hover:bg-ink hover:text-paper transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`h-4 w-4 ${unsplashLoading ? "animate-spin" : ""}`} />
-            {unsplashLoading ? "Buscando..." : "Metal líquido · Unsplash"}
+            {unsplashLoading ? "Buscando..." : "Photo by Unsplash"}
           </button>
           {config.backgroundImageDataUrl && (
             <>
