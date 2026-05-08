@@ -1063,7 +1063,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               padding: s.bgEnabled ? "16px 26px" : "0",
               fontFamily: fontScale,
               fontSize: s.fontSize,
-              lineHeight: 1.22,
+              lineHeight: 1.35,
               color: s.color,
               textAlign: "center",
               fontWeight: s.fontWeight,
@@ -1072,9 +1072,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               wordBreak: "normal",
               whiteSpace: "normal",
               // Hard-cap at the outer wrapper width so text never bleeds outside the frame.
+              // paddingBottom leaves room for descenders (p/g/q/y) + stroke shadow below baseline.
               width: "100%",
               maxWidth: width - 120,
               overflow: "hidden",
+              paddingBottom: "0.18em",
             }}>
               {(() => {
                 // 0.62em/glyph accounts for Plus Jakarta Sans weight-800 being
@@ -1086,8 +1088,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
                 const lines = wrapTextToLines(active.text, charsPerLine);
                 return lines.map((line, i) => (
                   // nowrap per line prevents the SVG rasterizer (html-to-image export)
-                  // from re-wrapping with fallback-font metrics.
-                  <div key={i} style={{ whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden" }}>{line}</div>
+                  // from re-wrapping with fallback-font metrics. No overflow:hidden here —
+                  // that was clipping descenders; parent overflow:hidden handles containment.
+                  <div key={i} style={{ whiteSpace: "nowrap", maxWidth: "100%" }}>{line}</div>
                 ));
               })()}
             </div>
