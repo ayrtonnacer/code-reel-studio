@@ -757,7 +757,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           })(),
           background: theme.bg,
           border: isY2K ? `2px solid #000` : `1px solid ${theme.border}`,
-          boxShadow: isY2K ? "8px 8px 0 rgba(0,0,0,0.18)" : "0 24px 64px rgba(0, 0, 0, 0.35)",
+          boxShadow: isY2K ? "8px 8px 0 rgba(0,0,0,0.18)" : (theme.terminalShadow ?? "0 24px 64px rgba(0, 0, 0, 0.35)"),
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",

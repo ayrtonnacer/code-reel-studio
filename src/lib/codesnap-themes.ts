@@ -12,6 +12,7 @@ export interface ThemeTokens {
   lineNumber: string;
   cursor: string;
   border: string;
+  terminalShadow?: string;
 }
 export const THEMES: Record<Theme, ThemeTokens> = {
   "scale-dark": {
@@ -125,6 +126,21 @@ export const THEMES: Record<Theme, ThemeTokens> = {
     lineNumber: "#c0c0c0",
     cursor: "#0033cc",
     border: "#000000",
+  },
+  "obsidian-duotone": {
+    bg: "#000000",
+    text: "#CFC8DD",
+    comment: "#6E657D",
+    keyword: "#C7A6FF",
+    string: "#FFB273",
+    number: "#D7B2FF",
+    function: "#F3E9FF",
+    variable: "#E0D7EC",
+    punctuation: "#8C7AA8",
+    lineNumber: "#5A5266",
+    cursor: "#FF6B00",
+    border: "#161616",
+    terminalShadow: "0 0 0 1px rgba(255,107,0,0.12), 0 40px 100px rgba(0,0,0,0.98), 0 0 100px rgba(255,107,0,0.06)",
   },
 };
 export interface BackgroundDef {

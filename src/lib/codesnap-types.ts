@@ -24,7 +24,8 @@ export type Theme =
   | "dracula"
   | "paper-light"
   | "vercel-dark"
-  | "chrome-y2k";
+  | "chrome-y2k"
+  | "obsidian-duotone";
 
 export type BackgroundStyle =
   | "ember-gradient"
@@ -199,8 +200,8 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   code: DEFAULT_CODE,
   language: "python",
   filename: "quicksort.py",
-  theme: "paper-light",
-  background: "paper-noise",
+  theme: "obsidian-duotone",
+  background: "ink-grid",
   customGradient: {
     from: "#ff5722",
     to: "#1a1a1a",
