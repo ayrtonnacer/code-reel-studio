@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { toCanvas, getFontEmbedCSS } from "html-to-image";
+import { domToCanvas as msToCanvas, createContext as msCreateContext, destroyContext as msDestroyContext, type Context as MSContext } from "modern-screenshot";
 import {
   computeDurationFrames,
   computeVideoTimings,
@@ -56,18 +57,27 @@ const HTML_TO_IMAGE_OPTS = {
  */
 let cachedFontEmbedCSS: string | null = null;
 let fontEmbedFailed = false;
+let msContext: MSContext<HTMLElement> | null = null;
 
 async function captureFrame(el: HTMLElement): Promise<HTMLCanvasElement> {
+  // modern-screenshot: uses Blob URLs instead of encodeURIComponent — 3-5× faster
+  // and immune to the URIError/URI-malformed bug. Context caches fonts + images.
+  if (msContext) {
+    try {
+      return await msToCanvas(msContext);
+    } catch (err) {
+      console.warn('[export] modern-screenshot failed, switching to html-to-image:', err);
+      msContext = null;
+      // fall through to html-to-image
+    }
+  }
+  // html-to-image fallback (kept for safety)
   if (fontEmbedFailed) {
     return toCanvas(el, { ...HTML_TO_IMAGE_OPTS, skipFonts: true });
   }
   try {
     return await toCanvas(el, { ...HTML_TO_IMAGE_OPTS, fontEmbedCSS: cachedFontEmbedCSS ?? undefined });
   } catch (err) {
-    // html-to-image's svgToDataURL calls encodeURIComponent on the full SVG string.
-    // It throws URIError ("URI malformed") when the serialized content contains lone
-    // Unicode surrogates — commonly from embedded font CSS or certain text characters.
-    // Retrying with skipFonts avoids embedding font binaries and resolves the issue.
     if (err instanceof Error && (err.name === 'URIError' || err.message === 'URI malformed')) {
       cachedFontEmbedCSS = null;
       fontEmbedFailed = true;
@@ -294,8 +304,8 @@ async function renderFrameCanvas(
   i: number
 ): Promise<HTMLCanvasElement> {
   await setFrame(i);
-  await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
+  // flushSync + requestAnimationFrame inside setFrame already guarantees DOM commit;
+  // no extra yield needed.
   const el = getEl();
   if (!el) throw new Error("Frame element not mounted");
   return captureFrame(el);
@@ -407,7 +417,11 @@ async function encodeMp4(
     if (i % 5 === 0 || i === totalFrames - 1) {
       onProgress(i + 1, `Rendering + encoding frame ${i + 1} / ${totalFrames}`);
     }
-    await new Promise((r) => setTimeout(r, 0));
+    // Yield every 4 frames or when encoder queue is deep — avoids blocking the
+    // main thread on every frame while still draining the HW encoder queue.
+    if (i % 4 === 3 || videoEncoder.encodeQueueSize > 5) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
   }
 
   await videoEncoder.flush();
@@ -492,14 +506,25 @@ export function useVideoExport() {
         // Embed webfonts once so every frame rasterizes with the real font
         // (Plus Jakarta Sans, JetBrains Mono…). Without this, the exporter
         // falls back to a system font and subtitles overlap.
+        msContext = null;
         fontEmbedFailed = false;
         const frameEl = getFrameElement();
         if (frameEl) {
           try {
-            cachedFontEmbedCSS = await getFontEmbedCSS(frameEl);
+            // modern-screenshot context: pre-warms fonts + images once for all frames
+            msContext = await msCreateContext(frameEl, {
+              width: VIDEO_WIDTH,
+              height: VIDEO_HEIGHT,
+              scale: 1,
+            });
           } catch (err) {
-            console.warn("Font embed failed, falling back to system fonts in export:", err);
-            cachedFontEmbedCSS = null;
+            console.warn("[export] modern-screenshot context failed, using html-to-image fallback:", err);
+            msContext = null;
+            try {
+              cachedFontEmbedCSS = await getFontEmbedCSS(frameEl);
+            } catch (e) {
+              cachedFontEmbedCSS = null;
+            }
           }
         }
 
@@ -515,6 +540,12 @@ export function useVideoExport() {
       } catch (err) {
         console.error(err);
         setProgress({ phase: "error", current: 0, total: 0, message: err instanceof Error ? err.message : "Export failed", blobUrl: null, fileExt: ext });
+      } finally {
+        // Always release context memory after export (success or failure)
+        if (msContext) {
+          msDestroyContext(msContext);
+          msContext = null;
+        }
       }
     },
     []
