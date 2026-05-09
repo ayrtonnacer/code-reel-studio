@@ -229,7 +229,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   commentStyle: "inline",
   scanMode: "highlight-static",
   outroEnabled: true,
-  outroText: "Guarda este video si te fue útil 👇",
+  outroText: "Guarda este video si te fue util",
   backgroundImageDataUrl: null,
   backgroundImageName: null,
   backgroundImageOverlay: 0,

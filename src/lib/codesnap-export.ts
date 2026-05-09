@@ -55,9 +55,26 @@ const HTML_TO_IMAGE_OPTS = {
  * render with the same font the preview uses.
  */
 let cachedFontEmbedCSS: string | null = null;
+let fontEmbedFailed = false;
 
 async function captureFrame(el: HTMLElement): Promise<HTMLCanvasElement> {
-  return toCanvas(el, { ...HTML_TO_IMAGE_OPTS, fontEmbedCSS: cachedFontEmbedCSS ?? undefined });
+  if (fontEmbedFailed) {
+    return toCanvas(el, { ...HTML_TO_IMAGE_OPTS, skipFonts: true });
+  }
+  try {
+    return await toCanvas(el, { ...HTML_TO_IMAGE_OPTS, fontEmbedCSS: cachedFontEmbedCSS ?? undefined });
+  } catch (err) {
+    // html-to-image's svgToDataURL calls encodeURIComponent on the full SVG string.
+    // It throws URIError ("URI malformed") when the serialized content contains lone
+    // Unicode surrogates — commonly from embedded font CSS or certain text characters.
+    // Retrying with skipFonts avoids embedding font binaries and resolves the issue.
+    if (err instanceof Error && (err.name === 'URIError' || err.message === 'URI malformed')) {
+      cachedFontEmbedCSS = null;
+      fontEmbedFailed = true;
+      return toCanvas(el, { ...HTML_TO_IMAGE_OPTS, skipFonts: true });
+    }
+    throw err;
+  }
 }
 
 interface AudioSource {
@@ -475,6 +492,7 @@ export function useVideoExport() {
         // Embed webfonts once so every frame rasterizes with the real font
         // (Plus Jakarta Sans, JetBrains Mono…). Without this, the exporter
         // falls back to a system font and subtitles overlap.
+        fontEmbedFailed = false;
         const frameEl = getFrameElement();
         if (frameEl) {
           try {
