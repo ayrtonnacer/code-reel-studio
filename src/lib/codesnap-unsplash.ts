@@ -13,39 +13,42 @@ interface UnsplashSearchResponse {
   results: UnsplashPhoto[];
 }
 
-// Curated queries targeting dark liquid-metal / chrome / abstract 3D render aesthetic.
-// Each click picks 3 at random → parallel requests → merged + scored pool.
+// Tightly focused on chrome/metal/abstract-sculpture aesthetic.
+// Avoids generic "dark abstract" that bleeds into nature/people results.
 const AESTHETIC_QUERIES = [
-  "liquid chrome abstract",
-  "dark metallic waves",
-  "chrome fluid render",
-  "glossy black metal",
-  "abstract silver sculpture",
-  "futuristic chrome geometry",
-  "reflective liquid metal",
-  "metallic fluid abstract",
-  "black chrome texture",
-  "molten chrome render",
-  "generative chrome art",
-  "dark abstract fluid",
-  "liquid metal 3d render",
-  "chrome sculpture abstract",
-  "dark glossy surface",
-  "abstract metallic surface",
-  "chrome liquid simulation",
+  "chrome sphere abstract",
+  "liquid chrome sculpture",
+  "metallic orb render",
+  "polished chrome abstract",
+  "silver liquid metal abstract",
+  "chrome ball 3d render",
+  "reflective metal sphere",
+  "brushed chrome abstract",
+  "dark chrome orb",
+  "liquid silver sculpture",
+  "chrome surface abstract",
+  "metallic reflection abstract",
+  "chrome fluid simulation",
+  "abstract metal sculpture dark",
+  "glossy chrome sphere",
+  "dark metallic abstract render",
+  "chrome generative art",
+  "silver chrome texture abstract",
 ];
 
 const POSITIVE_KW = [
-  "chrome", "metal", "liquid", "abstract", "fluid", "dark", "render",
-  "3d", "reflective", "glossy", "futuristic", "silver", "metallic",
-  "sculpture", "generative", "digital art", "cgi", "blender", "octane",
+  "chrome", "metal", "liquid", "abstract", "fluid", "render",
+  "3d", "reflective", "glossy", "silver", "metallic",
+  "sculpture", "generative", "cgi", "blender", "octane",
+  "sphere", "orb", "polished", "brushed", "reflection", "ball",
 ];
 
 const NEGATIVE_KW = [
   "car", "vehicle", "automobile", "truck", "motorcycle", "robot",
   "machinery", "factory", "industrial", "landscape", "nature", "forest",
   "beach", "ocean", "sky", "person", "face", "portrait", "logo",
-  "gamer", "wallpaper", "text", "infographic",
+  "gamer", "wallpaper", "text", "infographic", "building", "architecture",
+  "food", "flower", "animal", "water", "space", "galaxy", "nebula",
 ];
 
 function hexLuminance(hex: string): number {
@@ -61,10 +64,10 @@ function scorePhoto(photo: UnsplashPhoto): number {
 
   if (photo.color) {
     const lum = hexLuminance(photo.color);
-    if (lum < 0.04) score += 5;
-    else if (lum < 0.12) score += 3;
-    else if (lum < 0.25) score += 1;
-    else if (lum > 0.6) score -= 4;
+    if (lum < 0.04) score += 6;
+    else if (lum < 0.12) score += 4;
+    else if (lum < 0.25) score += 2;
+    else if (lum > 0.5) score -= 5;
   }
 
   const text = [
@@ -85,13 +88,16 @@ function pickQueries(n: number): string[] {
 }
 
 async function searchPhotos(query: string, key: string): Promise<UnsplashPhoto[]> {
+  // Randomize page (1–3) so repeated calls surface different results
+  const page = Math.floor(Math.random() * 3) + 1;
   const params = new URLSearchParams({
     query,
     color: "black",
     orientation: "portrait",
     content_filter: "high",
     order_by: "relevant",
-    per_page: "20",
+    per_page: "30",
+    page: String(page),
     client_id: key,
   });
   const res = await fetch(`https://api.unsplash.com/search/photos?${params}`);
@@ -109,7 +115,8 @@ export async function fetchRandomLiquidMetalPhoto(): Promise<{
   const key = import.meta.env.VITE_UNSPLASH_ACCESS_KEY as string | undefined;
   if (!key) throw new Error("VITE_UNSPLASH_ACCESS_KEY not set");
 
-  const queries = pickQueries(3);
+  // 5 parallel queries → larger pool → more variety per click
+  const queries = pickQueries(5);
   const results = await Promise.allSettled(queries.map(q => searchPhotos(q, key)));
 
   // Merge and dedupe by id
@@ -127,12 +134,12 @@ export async function fetchRandomLiquidMetalPhoto(): Promise<{
 
   if (pool.length === 0) throw new Error("No se encontraron resultados en Unsplash.");
 
-  // Score and sort — pick randomly from top 8 to keep variety
+  // Score, sort, pick randomly from top 15 to keep variety
   const ranked = pool
     .map(p => ({ photo: p, score: scorePhoto(p) }))
     .sort((a, b) => b.score - a.score);
 
-  const topN = ranked.slice(0, Math.min(8, ranked.length));
+  const topN = ranked.slice(0, Math.min(15, ranked.length));
   const chosen = topN[Math.floor(Math.random() * topN.length)].photo;
 
   // Required by Unsplash API guidelines: trigger download event

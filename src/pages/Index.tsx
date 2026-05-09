@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CodeInput } from "@/components/codesnap/CodeInput";
 import { ConfigPanel } from "@/components/codesnap/ConfigPanel";
 import { PreviewPlayer } from "@/components/codesnap/PreviewPlayer";
 import { ExportDialog } from "@/components/codesnap/ExportDialog";
 import { DEFAULT_CONFIG, type SnippetConfig } from "@/lib/codesnap-types";
+import { fetchRandomLiquidMetalPhoto } from "@/lib/codesnap-unsplash";
 import { Film, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +14,20 @@ const Index = () => {
 
   const update = (next: Partial<SnippetConfig>) =>
     setConfig((prev) => ({ ...prev, ...next }));
+
+  // Auto-load a random metal/chrome photo on first mount
+  useEffect(() => {
+    fetchRandomLiquidMetalPhoto()
+      .then(({ imageUrl, credit, creditUrl, unsplashUrl }) => {
+        setConfig((prev) => ({
+          ...prev,
+          backgroundImageDataUrl: imageUrl,
+          backgroundImageName: `Photo by ${credit} on Unsplash|${creditUrl}|${unsplashUrl}`,
+          backgroundImageOverlay: 0,
+        }));
+      })
+      .catch(() => {/* silently skip if API key missing or network error */});
+  }, []);
 
   return (
     <div className="min-h-screen bg-paper text-ink">
