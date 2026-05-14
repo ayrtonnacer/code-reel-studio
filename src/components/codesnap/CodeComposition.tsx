@@ -719,30 +719,37 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           transformOrigin: "0% 50%",
         }}
       >
-        {/* Brand watermark */}
-        <div style={{
-          position: "absolute",
-          top: 60,
-          left: 0,
-          right: 0,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 20,
-        }}>
-          <div style={{
-            fontFamily: fontScale,
-            color: isLightBg ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.65)",
-            fontSize: 36,
-            letterSpacing: "0.02em",
-            fontWeight: 600,
-          }}>
-            {config.brandHandle}
-          </div>
-        </div>
+        {/* Brand watermark — moves to bottom when top-subtitles are on so it
+            doesn't collide with the subtitle band or the title */}
+        {(() => {
+          const subsAtTop = config.subtitlesEnabled && config.subtitleStyle.position === "top";
+          return (
+            <div style={{
+              position: "absolute",
+              ...(subsAtTop ? { bottom: 200 } : { top: 60 }),
+              left: 0,
+              right: 0,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 20,
+            }}>
+              <div style={{
+                fontFamily: fontScale,
+                color: isLightBg ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.65)",
+                fontSize: 36,
+                letterSpacing: "0.02em",
+                fontWeight: 600,
+              }}>
+                {config.brandHandle}
+              </div>
+            </div>
+          );
+        })()}
 
-        {/* Title — fades out at 1.5s */}
-        {config.showTitle && config.title.trim() && (
+        {/* Title — fades out at 1.5s; hidden when top-subtitles are on */}
+        {config.showTitle && config.title.trim() &&
+         !(config.subtitlesEnabled && config.subtitleStyle.position === "top") && (
           <div style={{
             position: "absolute",
             top: 200,
