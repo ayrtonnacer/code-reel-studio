@@ -40,12 +40,40 @@ export const ExportDialog: React.FC<Props> = ({
   const mp4Supported = isMp4Supported();
 
   // flushSync forces React to commit the new frame synchronously so the
-  // Thumbnail DOM (and any useLayoutEffects like MetallicPaint's GL draw)
-  // are fully updated before html-to-image captures the frame.
+  // Thumbnail DOM is fully updated before modern-screenshot captures the frame.
+  // If a silk background video is present, we pause it, seek to the exact frame
+  // time, and draw its current frame to the canvas before resolving — ensuring
+  // the canvas (which modern-screenshot captures via toDataURL) shows the right moment.
   const setFrame = useCallback((frame: number) => {
     return new Promise<void>((resolve) => {
       flushSync(() => setRenderFrame(frame));
-      requestAnimationFrame(() => resolve());
+
+      const container = offscreenRef.current;
+      const videoEl = container?.querySelector("video[data-silk-video]") as HTMLVideoElement | null;
+      const canvasEl = container?.querySelector("canvas[data-silk-canvas]") as HTMLCanvasElement | null;
+
+      if (videoEl && canvasEl && isFinite(videoEl.duration) && videoEl.duration > 0) {
+        const targetTime = (frame / FPS) % videoEl.duration;
+        videoEl.pause();
+
+        const drawAndResolve = () => {
+          const ctx = canvasEl.getContext("2d");
+          if (ctx) ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+          requestAnimationFrame(() => resolve());
+        };
+
+        // Timeout fallback so export never hangs if seeked doesn't fire
+        const timer = setTimeout(drawAndResolve, 400);
+
+        videoEl.addEventListener("seeked", () => {
+          clearTimeout(timer);
+          drawAndResolve();
+        }, { once: true });
+
+        videoEl.currentTime = targetTime;
+      } else {
+        requestAnimationFrame(() => resolve());
+      }
     });
   }, []);
 

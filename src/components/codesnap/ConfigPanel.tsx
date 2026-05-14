@@ -403,81 +403,10 @@ export const ConfigPanel: React.FC<Props> = ({ config, onChange }) => {
           </div>
         )}
 
-        {/* Silk controls — only shown when silk background is selected */}
         {config.background === "silk" && (
-          <div className="space-y-4 brutal-border bg-concrete p-4">
-            <Label className="font-mono text-xs tracking-wide text-muted-foreground">
-              Silk settings
-            </Label>
-
-            <div className="brutal-border bg-concrete p-3 space-y-2">
-              <Label className="font-mono text-xs tracking-wide text-muted-foreground">Color</Label>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  "#1a0a2e", "#0a1628", "#0d1a0d", "#1a0a0a",
-                  "#f3eded", "#ede8f3", "#edede8", "#e8ede8",
-                ].map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => onChange({ silkColor: c })}
-                    style={{
-                      background: c,
-                      width: 28,
-                      height: 28,
-                      border: config.silkColor === c ? "3px solid #ff5722" : "2px solid #666",
-                      borderRadius: 4,
-                      flexShrink: 0,
-                    }}
-                  />
-                ))}
-              </div>
-              <ColorField
-                label="Custom hex"
-                value={config.silkColor}
-                onChange={(v) => onChange({ silkColor: v })}
-              />
-            </div>
-
-            <Field label={`Speed · ${config.silkSpeed}`}>
-              <Slider
-                value={[config.silkSpeed]}
-                min={0.5}
-                max={12}
-                step={0.5}
-                onValueChange={([v]) => onChange({ silkSpeed: v })}
-              />
-            </Field>
-
-            <Field label={`Scale · ${config.silkScale}`}>
-              <Slider
-                value={[config.silkScale]}
-                min={0.5}
-                max={4}
-                step={0.25}
-                onValueChange={([v]) => onChange({ silkScale: v })}
-              />
-            </Field>
-
-            <Field label={`Noise · ${config.silkNoiseIntensity}`}>
-              <Slider
-                value={[config.silkNoiseIntensity]}
-                min={0}
-                max={5}
-                step={0.25}
-                onValueChange={([v]) => onChange({ silkNoiseIntensity: v })}
-              />
-            </Field>
-
-            <Field label={`Rotation · ${config.silkRotation.toFixed(2)} rad`}>
-              <Slider
-                value={[config.silkRotation]}
-                min={0}
-                max={Math.PI * 2}
-                step={0.1}
-                onValueChange={([v]) => onChange({ silkRotation: v })}
-              />
-            </Field>
-          </div>
+          <p className="font-mono text-[10px] text-muted-foreground px-1">
+            Fondo animado en loop (10 s). Se exporta frame a frame sincronizado con el video.
+          </p>
         )}
 
         <Field label={`Padding · ${config.padding}px`}>
