@@ -1077,7 +1077,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         const stroke = Math.max(0, s.strokeWidth);
         const positionStyle: React.CSSProperties =
           s.position === "center" ? { top: "50%", transform: "translateY(-50%)" }
-          : s.position === "bottom" ? { bottom: 560 }
+          : s.position === "bottom" ? { bottom: 360 }
           : { top: 120 };
         const bgRgba = s.bgEnabled ? hexToRgba(s.bgColor, s.bgOpacity) : "transparent";
         // -webkit-text-stroke is a single-pass GPU stroke — replaces 8-layer
