@@ -999,7 +999,13 @@ const SubtitlesEditor: React.FC<{
               onClick={() => setStyle({ position: "top" })}
               className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${s.position === "top" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
             >
-              Arriba (primer tercio)
+              Arriba
+            </button>
+            <button
+              onClick={() => setStyle({ position: "bottom" })}
+              className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${s.position === "bottom" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+            >
+              Abajo
             </button>
             <button
               onClick={() => setStyle({ position: "center" })}

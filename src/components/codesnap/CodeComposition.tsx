@@ -775,11 +775,14 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         )}
 
-        {/* Code card — when subtitles are on, lives in the bottom 2/3 so the
-            top third is free for the TikTok-style caption band. */}
+        {/* Code card — when subtitles are on, moves out of the subtitle band:
+            "top" subtitles → card in bottom 2/3 (66.67%)
+            "bottom" subtitles → card in top 2/3 (33.33%) */}
         <div style={{
           position: "absolute",
-          top: config.subtitlesEnabled ? "66.67%" : "50%",
+          top: config.subtitlesEnabled
+            ? (config.subtitleStyle.position === "top" ? "66.67%" : "33.33%")
+            : "50%",
           left: "50%",
           transform: `translate(-50%, -50%) scale(${introScale * codeCardScale})`,
           opacity: introOpacity,
@@ -1072,8 +1075,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         if (!activeLayout) return null;
         const s = config.subtitleStyle;
         const stroke = Math.max(0, s.strokeWidth);
-        const positionStyle: React.CSSProperties = s.position === "center"
-          ? { top: "50%", transform: "translateY(-50%)" }
+        const positionStyle: React.CSSProperties =
+          s.position === "center" ? { top: "50%", transform: "translateY(-50%)" }
+          : s.position === "bottom" ? { bottom: 560 }
           : { top: 120 };
         const bgRgba = s.bgEnabled ? hexToRgba(s.bgColor, s.bgOpacity) : "transparent";
         // -webkit-text-stroke is a single-pass GPU stroke — replaces 8-layer

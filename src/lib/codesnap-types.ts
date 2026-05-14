@@ -172,7 +172,7 @@ export interface SubtitleStyle {
   bgColor: string;
   bgOpacity: number;   // 0..1
   fontWeight: number;  // 400..900
-  position: "top" | "center";
+  position: "top" | "bottom" | "center";
 }
 
 export const DEFAULT_CODE = `# Función de ordenamiento rápido que devuelve una lista ordenada
