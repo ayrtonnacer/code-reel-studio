@@ -581,9 +581,10 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
-      {/* Silk animated background — WebGL canvas fills the frame */}
+      {/* Silk animated background — plain positioned div avoids AbsoluteFill's flex layout
+          which would shrink the R3F canvas to its natural 300×150 default size. */}
       {isSilk && (
-        <AbsoluteFill style={{ zIndex: 0 }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
           <Silk
             color={config.silkColor}
             speed={config.silkSpeed}
@@ -592,7 +593,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
             rotation={config.silkRotation}
             time={frame / fps}
           />
-        </AbsoluteFill>
+        </div>
       )}
 
       {/* Background image */}

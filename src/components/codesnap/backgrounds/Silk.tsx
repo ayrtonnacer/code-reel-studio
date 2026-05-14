@@ -155,6 +155,7 @@ const Silk: React.FC<SilkProps> = ({
     <Canvas
       dpr={[1, 2]}
       frameloop="always"
+      style={{ width: "100%", height: "100%" }}
       gl={{
         // Required so canvas.toDataURL() works for frame capture during export.
         // Without this, WebGL clears the buffer after each frame and toDataURL returns blank.
