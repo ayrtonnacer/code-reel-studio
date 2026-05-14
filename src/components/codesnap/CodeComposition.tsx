@@ -553,6 +553,27 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     [config.bgMusicDataUrl, config.bgMusicPreset]
   );
 
+  // ── Pre-compute subtitle layouts once (instead of per-frame text wrapping) ──
+  // Big perf win during export: wrapTextToLines runs N times total (N = blocks)
+  // instead of N times every frame. Also caches the line array reference so
+  // React renders the same elements when the active block doesn't change.
+  const subtitleLayouts = useMemo(() => {
+    if (!config.subtitlesEnabled) return null;
+    const s = config.subtitleStyle;
+    const usableWidth = width * 0.83 - (s.bgEnabled ? 52 : 0);
+    const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.62)));
+    return config.subtitleBlocks.map(block => ({
+      block,
+      lines: wrapTextToLines(block.text, charsPerLine),
+    }));
+  }, [
+    config.subtitlesEnabled,
+    config.subtitleBlocks,
+    config.subtitleStyle.bgEnabled,
+    config.subtitleStyle.fontSize,
+    width,
+  ]);
+
   // ── Cursor element ─────────────────────────────────────────────────────────
   const cursor = (
     <span style={{
@@ -1043,24 +1064,29 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
       </div>
 
       {/* ── Script-driven subtitle overlay (TikTok/Reels style) ── */}
-      {config.subtitlesEnabled && (() => {
+      {subtitleLayouts && (() => {
         const tSec = frame / fps;
-        const active = config.subtitleBlocks.find(b => tSec >= b.startSec && tSec < b.endSec);
-        if (!active) return null;
+        const activeLayout = subtitleLayouts.find(
+          l => tSec >= l.block.startSec && tSec < l.block.endSec
+        );
+        if (!activeLayout) return null;
         const s = config.subtitleStyle;
         const stroke = Math.max(0, s.strokeWidth);
-        const textShadow = stroke > 0
-          ? Array.from({ length: 8 }, (_, i) => {
-              const ang = (i / 8) * Math.PI * 2;
-              const dx = Math.cos(ang) * stroke;
-              const dy = Math.sin(ang) * stroke;
-              return `${dx.toFixed(1)}px ${dy.toFixed(1)}px 0 ${s.strokeColor}`;
-            }).join(", ")
-          : "none";
         const positionStyle: React.CSSProperties = s.position === "center"
           ? { top: "50%", transform: "translateY(-50%)" }
           : { bottom: 240 };
         const bgRgba = s.bgEnabled ? hexToRgba(s.bgColor, s.bgOpacity) : "transparent";
+        // -webkit-text-stroke is a single-pass GPU stroke — replaces 8-layer
+        // text-shadow which was ~150-300ms/frame to rasterize in the export's
+        // SVG-foreignObject path. paint-order: stroke fill keeps the fill on
+        // top so the visible outline = strokeWidth/2 px outside the glyph;
+        // we double the value to match the prior text-shadow visual weight.
+        const strokeStyles: React.CSSProperties = stroke > 0
+          ? {
+              WebkitTextStroke: `${stroke * 2}px ${s.strokeColor}`,
+              paintOrder: "stroke fill",
+            }
+          : {};
         return (
           <div style={{
             position: "absolute",
@@ -1082,31 +1108,17 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               textAlign: "center",
               fontWeight: s.fontWeight,
               letterSpacing: "normal",
-              textShadow,
+              ...strokeStyles,
               wordBreak: "normal",
               whiteSpace: "normal",
-              // Hard-cap at the outer wrapper width so text never bleeds outside the frame.
-              // paddingBottom leaves room for descenders (p/g/q/y) + stroke shadow below baseline.
               width: "100%",
               maxWidth: width - 120,
               overflow: "hidden",
               paddingBottom: "0.18em",
             }}>
-              {(() => {
-                // 0.62em/glyph accounts for Plus Jakarta Sans weight-800 being
-                // wider than regular. 83% canvas width gives a generous margin
-                // so lines never reach the frame edge.
-                const usableWidth = width * 0.83 - (s.bgEnabled ? 52 : 0);
-                const charsPerLine = Math.max(14, Math.floor(usableWidth / (s.fontSize * 0.62)));
-                // wrapTextToLines handles arbitrarily long phrases (not just 2-line split).
-                const lines = wrapTextToLines(active.text, charsPerLine);
-                return lines.map((line, i) => (
-                  // nowrap per line prevents the SVG rasterizer (html-to-image export)
-                  // from re-wrapping with fallback-font metrics. No overflow:hidden here —
-                  // that was clipping descenders; parent overflow:hidden handles containment.
-                  <div key={i} style={{ whiteSpace: "nowrap", maxWidth: "100%" }}>{line}</div>
-                ));
-              })()}
+              {activeLayout.lines.map((line, i) => (
+                <div key={i} style={{ whiteSpace: "nowrap", maxWidth: "100%" }}>{line}</div>
+              ))}
             </div>
           </div>
         );
