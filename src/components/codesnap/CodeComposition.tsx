@@ -15,6 +15,7 @@ import { THEMES, BACKGROUNDS } from "@/lib/codesnap-themes";
 import { tokenize } from "@/lib/codesnap-tokenize";
 import { getMusicPreset, SFX_TYPE_CLICK, SFX_ZOOM_IN, SFX_ZOOM_OUT, SFX_START_CLICK, type MusicPresetKey } from "@/lib/codesnap-sfx";
 import { parseNarrative, autoWrapCode, getCommentLinePrefix } from "@/lib/codesnap-narrative";
+import SilkCanvas from "./SilkCanvas";
 
 // ── Multi-line subtitle word-wrap ────────────────────────────────────────────
 // Iteratively splits text at word boundaries so every line fits within maxChars,
@@ -580,26 +581,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
-      {/* Silk animated background — plain looping video as full-frame background */}
+      {/* Silk animated background — WebGL canvas with preserveDrawingBuffer for export capture */}
       {isSilk && (
-        <video
-          data-silk-video=""
-          src="/backgrounds/silk.webm"
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            zIndex: 0,
-          }}
-        />
+        <SilkCanvas speed={5} scale={1} color="#edeaef" noiseIntensity={1.5} rotation={0} />
       )}
 
       {/* Background image */}
