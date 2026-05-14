@@ -202,7 +202,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   language: "python",
   filename: "quicksort.py",
   theme: "obsidian-duotone",
-  background: "ink-grid",
+  background: "silk",
   customGradient: {
     from: "#ff5722",
     to: "#1a1a1a",

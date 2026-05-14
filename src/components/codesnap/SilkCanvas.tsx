@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef, useLayoutEffect } from "react";
 
 export interface SilkCanvasProps {
+  frame: number;
+  fps: number;
   speed?: number;
   scale?: number;
   color?: string;
@@ -18,7 +20,7 @@ void main() {
 }
 `;
 
-// Exact fragment shader from react-bits Silk component
+// Exact fragment shader from react-bits Silk
 const FRAG = `
 precision highp float;
 varying vec2 vUv;
@@ -74,7 +76,20 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+interface GLState {
+  gl: WebGLRenderingContext;
+  prog: WebGLProgram;
+  uTime: WebGLUniformLocation;
+  uColor: WebGLUniformLocation;
+  uSpeed: WebGLUniformLocation;
+  uScale: WebGLUniformLocation;
+  uRotation: WebGLUniformLocation;
+  uNoiseIntensity: WebGLUniformLocation;
+}
+
 const SilkCanvas: React.FC<SilkCanvasProps> = ({
+  frame,
+  fps,
   speed = 5,
   scale = 1,
   color = "#7B7481",
@@ -82,71 +97,69 @@ const SilkCanvas: React.FC<SilkCanvasProps> = ({
   rotation = 0,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glRef = useRef<GLState | null>(null);
 
-  useEffect(() => {
+  // Runs synchronously after every React commit — before the browser paints.
+  // This guarantees the WebGL frame is ready when modern-screenshot calls
+  // canvas.toDataURL() during export (after flushSync + requestAnimationFrame).
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // preserveDrawingBuffer: true lets modern-screenshot read the canvas via toDataURL()
-    const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
-    if (!gl) return;
+    // One-time GL initialization
+    if (!glRef.current) {
+      const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
+      if (!gl) return;
 
-    const compileShader = (type: number, src: string) => {
-      const s = gl.createShader(type)!;
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      return s;
-    };
+      const compile = (type: number, src: string) => {
+        const s = gl.createShader(type)!;
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        return s;
+      };
 
-    const prog = gl.createProgram()!;
-    gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
-    gl.useProgram(prog);
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+      gl.linkProgram(prog);
+      gl.useProgram(prog);
 
-    // Full-screen quad (two triangles)
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      const buf = gl.createBuffer()!;
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
 
-    const posLoc = gl.getAttribLocation(prog, "aPosition");
-    gl.enableVertexAttribArray(posLoc);
-    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+      const posLoc = gl.getAttribLocation(prog, "aPosition");
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-    const uTime          = gl.getUniformLocation(prog, "uTime");
-    const uColor         = gl.getUniformLocation(prog, "uColor");
-    const uSpeed         = gl.getUniformLocation(prog, "uSpeed");
-    const uScale         = gl.getUniformLocation(prog, "uScale");
-    const uRotation      = gl.getUniformLocation(prog, "uRotation");
-    const uNoiseIntensity = gl.getUniformLocation(prog, "uNoiseIntensity");
+      glRef.current = {
+        gl,
+        prog,
+        uTime:          gl.getUniformLocation(prog, "uTime")!,
+        uColor:         gl.getUniformLocation(prog, "uColor")!,
+        uSpeed:         gl.getUniformLocation(prog, "uSpeed")!,
+        uScale:         gl.getUniformLocation(prog, "uScale")!,
+        uRotation:      gl.getUniformLocation(prog, "uRotation")!,
+        uNoiseIntensity: gl.getUniformLocation(prog, "uNoiseIntensity")!,
+      };
+    }
 
+    const { gl, uTime, uColor, uSpeed, uScale, uRotation, uNoiseIntensity } = glRef.current;
     const [r, g, b] = hexToRgb(color);
+
     gl.uniform3f(uColor, r, g, b);
     gl.uniform1f(uSpeed, speed);
     gl.uniform1f(uScale, scale);
     gl.uniform1f(uRotation, rotation);
     gl.uniform1f(uNoiseIntensity, noiseIntensity);
+    // Deterministic time: identical frame → identical silk state in preview and export
+    gl.uniform1f(uTime, (frame / fps) * 0.1);
 
-    const start = performance.now();
-    let rafId: number;
-
-    const render = () => {
-      // react-bits accumulates uTime at rate 0.1/sec (0.1 * delta per frame)
-      const elapsed = (performance.now() - start) / 1000;
-      gl.uniform1f(uTime, elapsed * 0.1);
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      rafId = requestAnimationFrame(render);
-    };
-
-    rafId = requestAnimationFrame(render);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      gl.deleteProgram(prog);
-      gl.deleteBuffer(buf);
-    };
-  }, [speed, scale, color, noiseIntensity, rotation]);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // Block until GPU commits — required before toDataURL() in export capture
+    gl.finish();
+  });
 
   return (
     <canvas

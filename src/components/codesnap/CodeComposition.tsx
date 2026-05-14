@@ -581,9 +581,9 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
-      {/* Silk animated background — WebGL canvas with preserveDrawingBuffer for export capture */}
+      {/* Silk animated background — frame-driven WebGL canvas, deterministic in preview & export */}
       {isSilk && (
-        <SilkCanvas speed={5} scale={1} color="#edeaef" noiseIntensity={1.5} rotation={0} />
+        <SilkCanvas frame={frame} fps={fps} speed={5} scale={1} color="#edeaef" noiseIntensity={1.5} rotation={0} />
       )}
 
       {/* Background image */}
