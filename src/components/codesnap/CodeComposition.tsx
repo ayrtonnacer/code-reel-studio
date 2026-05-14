@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
+import Silk from "@/components/codesnap/backgrounds/Silk";
 import {
   buildBackgroundCss,
   computeLinePanTimings,
@@ -576,8 +577,24 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
     return `rgba(${r},${g},${b},${opacity})`;
   };
 
+  const isSilk = config.background === "silk" && !config.backgroundImageDataUrl;
+
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
+      {/* Silk animated background — WebGL canvas fills the frame */}
+      {isSilk && (
+        <AbsoluteFill style={{ zIndex: 0 }}>
+          <Silk
+            color={config.silkColor}
+            speed={config.silkSpeed}
+            scale={config.silkScale}
+            noiseIntensity={config.silkNoiseIntensity}
+            rotation={config.silkRotation}
+            time={frame / fps}
+          />
+        </AbsoluteFill>
+      )}
+
       {/* Background image */}
       {config.backgroundImageDataUrl && (
         <>

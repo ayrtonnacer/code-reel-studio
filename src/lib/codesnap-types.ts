@@ -35,7 +35,8 @@ export type BackgroundStyle =
   | "duotone-pop"
   | "custom-gradient"
   | "vercel-grain"
-  | "chrome-flat";
+  | "chrome-flat"
+  | "silk";
 
 export type GradientDirection =
   | "to right"
@@ -129,6 +130,12 @@ export interface SnippetConfig {
   backgroundImageDataUrl: string | null;
   backgroundImageName: string | null;
   backgroundImageOverlay: number; // 0..1 — dark overlay opacity
+  // silk animated background
+  silkColor: string;
+  silkSpeed: number;
+  silkScale: number;
+  silkNoiseIntensity: number;
+  silkRotation: number;
   // title styling
   titleColor: string;
   titleFontSize: number;
@@ -233,6 +240,11 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   backgroundImageDataUrl: null,
   backgroundImageName: null,
   backgroundImageOverlay: 0,
+  silkColor: "#1a0a2e",
+  silkSpeed: 4,
+  silkScale: 1,
+  silkNoiseIntensity: 1.5,
+  silkRotation: 0,
   sfxEnabled: true,
   sfxVolume: 1.0,
   bgMusicPreset: "butcha-boys",

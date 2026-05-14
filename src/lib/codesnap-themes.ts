@@ -199,4 +199,10 @@ export const BACKGROUNDS: Record<BackgroundStyle, BackgroundDef> = {
       backgroundColor: "#ffffff",
     },
   },
+  // Silk renders via WebGL; this CSS is the fallback for non-WebGL contexts.
+  "silk": {
+    css: {
+      backgroundColor: "#1a0a2e",
+    },
+  },
 };
