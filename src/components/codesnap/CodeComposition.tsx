@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing, spring, Audio, Sequence } from "remotion";
 import type { SnippetConfig } from "@/lib/codesnap-types";
 import {
@@ -578,55 +578,28 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const isSilk = config.background === "silk" && !config.backgroundImageDataUrl;
 
-  // Video + canvas refs for silk background
-  const silkVideoRef = useRef<HTMLVideoElement>(null);
-  const silkCanvasRef = useRef<HTMLCanvasElement>(null);
-
-  // RAF loop: continuously draws video → canvas so the animation is live in preview.
-  // During export, ExportDialog pauses the video and draws explicitly before each capture.
-  useEffect(() => {
-    if (!isSilk) return;
-    const video = silkVideoRef.current;
-    const canvas = silkCanvasRef.current;
-    if (!video || !canvas) return;
-    let animId: number;
-    const draw = () => {
-      if (video.readyState >= 2) {
-        const ctx = canvas.getContext("2d");
-        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-      animId = requestAnimationFrame(draw);
-    };
-    animId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animId);
-  }, [isSilk]);
-
   return (
     <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
-      {/* Silk animated background — hidden <video> + visible <canvas>.
-          Canvas is captured correctly by modern-screenshot (via toDataURL).
-          ExportDialog seeks the video per-frame and draws to canvas before capture. */}
+      {/* Silk animated background — plain looping video as full-frame background */}
       {isSilk && (
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
-          <video
-            ref={silkVideoRef}
-            data-silk-video=""
-            src="/backgrounds/silk.webm"
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            style={{ display: "none" }}
-          />
-          <canvas
-            ref={silkCanvasRef}
-            data-silk-canvas=""
-            width={width}
-            height={height}
-            style={{ width: "100%", height: "100%", display: "block" }}
-          />
-        </div>
+        <video
+          data-silk-video=""
+          src="/backgrounds/silk.webm"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            zIndex: 0,
+          }}
+        />
       )}
 
       {/* Background image */}
