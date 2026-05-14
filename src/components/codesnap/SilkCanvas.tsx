@@ -164,6 +164,10 @@ const SilkCanvas: React.FC<SilkCanvasProps> = ({
   return (
     <canvas
       ref={canvasRef}
+      // data-silk-canvas: marker so the export pipeline can exclude this from
+      // the DOM screenshot (modern-screenshot's toDataURL on a 1080×1920 WebGL
+      // canvas adds ~150ms/frame). Composited via drawImage in export instead.
+      data-silk-canvas=""
       width={1080}
       height={1920}
       style={{

@@ -87,6 +87,20 @@ async function captureFrame(el: HTMLElement): Promise<HTMLCanvasElement> {
   }
 }
 
+// Reusable composite canvas — avoids creating a new canvas per frame
+let compositeCanvas: HTMLCanvasElement | null = null;
+let compositeCtx: CanvasRenderingContext2D | null = null;
+
+function getCompositeCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  if (!compositeCanvas) {
+    compositeCanvas = document.createElement("canvas");
+    compositeCanvas.width = VIDEO_WIDTH;
+    compositeCanvas.height = VIDEO_HEIGHT;
+    compositeCtx = compositeCanvas.getContext("2d", { alpha: false })!;
+  }
+  return { canvas: compositeCanvas, ctx: compositeCtx! };
+}
+
 interface AudioSource {
   dataUrl: string;
   volume: number;
@@ -304,11 +318,23 @@ async function renderFrameCanvas(
   i: number
 ): Promise<HTMLCanvasElement> {
   await setFrame(i);
-  // flushSync + requestAnimationFrame inside setFrame already guarantees DOM commit;
-  // no extra yield needed.
   const el = getEl();
   if (!el) throw new Error("Frame element not mounted");
-  return captureFrame(el);
+
+  // Capture DOM (silk canvas excluded via msContext filter — saves ~150ms/frame)
+  const domCanvas = await captureFrame(el);
+
+  // Composite silk separately if present: drawImage from WebGL canvas to 2D
+  // canvas is ~1ms vs ~150ms for toDataURL+SVG-embed inside modern-screenshot
+  const silkCanvas = el.querySelector<HTMLCanvasElement>("canvas[data-silk-canvas]");
+  if (!silkCanvas) {
+    return domCanvas;
+  }
+
+  const { canvas: out, ctx } = getCompositeCanvas();
+  ctx.drawImage(silkCanvas, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+  ctx.drawImage(domCanvas, 0, 0);
+  return out;
 }
 
 async function encodeWebm(
@@ -408,6 +434,8 @@ async function encodeMp4(
   });
 
   const frameDurationUs = Math.round(1_000_000 / FPS);
+  const exportStartedAt = performance.now();
+
   for (let i = 0; i < totalFrames; i++) {
     const frameCanvas = await renderFrameCanvas(getFrameElement, setFrame, i);
     const vf = new VideoFrame(frameCanvas, { timestamp: i * frameDurationUs, duration: frameDurationUs });
@@ -417,12 +445,25 @@ async function encodeMp4(
     if (i % 5 === 0 || i === totalFrames - 1) {
       onProgress(i + 1, `Rendering + encoding frame ${i + 1} / ${totalFrames}`);
     }
+    // Periodic perf log: per-frame avg + ETA. Helps diagnose slow exports.
+    if (i > 0 && (i % 60 === 0 || i === totalFrames - 1)) {
+      const elapsedTotal = performance.now() - exportStartedAt;
+      const avgPerFrame = elapsedTotal / (i + 1);
+      const remaining = (totalFrames - i - 1) * avgPerFrame;
+      console.log(
+        `[export] frame ${i + 1}/${totalFrames} · avg ${avgPerFrame.toFixed(1)}ms/frame · ` +
+        `elapsed ${(elapsedTotal / 1000).toFixed(1)}s · ETA ${(remaining / 1000).toFixed(1)}s`
+      );
+    }
     // Yield every 4 frames or when encoder queue is deep — avoids blocking the
     // main thread on every frame while still draining the HW encoder queue.
     if (i % 4 === 3 || videoEncoder.encodeQueueSize > 5) {
       await new Promise((r) => setTimeout(r, 0));
     }
   }
+  console.log(
+    `[export] DONE · ${totalFrames} frames · ${((performance.now() - exportStartedAt) / 1000).toFixed(1)}s total`
+  );
 
   await videoEncoder.flush();
 
@@ -511,11 +552,20 @@ export function useVideoExport() {
         const frameEl = getFrameElement();
         if (frameEl) {
           try {
-            // modern-screenshot context: pre-warms fonts + images once for all frames
+            // modern-screenshot context: pre-warms fonts + images once for all frames.
+            // filter: skip the silk WebGL canvas — it's composited separately via
+            // drawImage in renderFrameCanvas, avoiding ~150ms/frame of toDataURL +
+            // base64 + SVG-embed overhead per frame.
             msContext = await msCreateContext(frameEl, {
               width: VIDEO_WIDTH,
               height: VIDEO_HEIGHT,
               scale: 1,
+              filter: (node) => {
+                if (node instanceof HTMLCanvasElement && node.dataset.silkCanvas !== undefined) {
+                  return false;
+                }
+                return true;
+              },
             });
           } catch (err) {
             console.warn("[export] modern-screenshot context failed, using html-to-image fallback:", err);

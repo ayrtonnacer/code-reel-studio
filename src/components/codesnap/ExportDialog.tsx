@@ -39,14 +39,14 @@ export const ExportDialog: React.FC<Props> = ({
   const { progress, exportWithFrameSetter, reset } = useVideoExport();
   const mp4Supported = isMp4Supported();
 
-  // flushSync forces React to commit the new frame synchronously so the
-  // Thumbnail DOM (and any useLayoutEffects like MetallicPaint's GL draw)
-  // are fully updated before html-to-image captures the frame.
-  const setFrame = useCallback((frame: number) => {
-    return new Promise<void>((resolve) => {
-      flushSync(() => setRenderFrame(frame));
-      requestAnimationFrame(() => resolve());
-    });
+  // flushSync runs React commit + all useLayoutEffects synchronously, so by
+  // the time it returns:
+  //   • DOM is fully updated
+  //   • SilkCanvas's WebGL draw + gl.finish() have completed (pixels in canvas)
+  // The encoder loop yields every 4 frames via setTimeout(0), so no RAF wait
+  // is needed here — saves ~16ms × N frames. Diff: 2500 frames = ~40s saved.
+  const setFrame = useCallback(async (frame: number) => {
+    flushSync(() => setRenderFrame(frame));
   }, []);
 
   const handleStart = async () => {

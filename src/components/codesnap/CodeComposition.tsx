@@ -579,8 +579,14 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
 
   const isSilk = config.background === "silk" && !config.backgroundImageDataUrl;
 
+  // Silk renders its own canvas background — keep AbsoluteFill transparent so
+  // the silk shows through. Critical for export: the DOM screenshot excludes the
+  // silk canvas (it's composited separately via drawImage), so a solid bg here
+  // would cover the silk in the final frame.
+  const fillStyle = config.backgroundImageDataUrl || isSilk ? undefined : bg.css;
+
   return (
-    <AbsoluteFill style={config.backgroundImageDataUrl ? undefined : bg.css}>
+    <AbsoluteFill style={fillStyle}>
       {/* Silk animated background — frame-driven WebGL canvas, deterministic in preview & export */}
       {isSilk && (
         <SilkCanvas frame={frame} fps={fps} speed={5} scale={1} color="#edeaef" noiseIntensity={1.5} rotation={0} />
