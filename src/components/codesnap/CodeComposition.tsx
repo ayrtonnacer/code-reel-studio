@@ -732,10 +732,10 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         }}>
           <div style={{
             fontFamily: fontScale,
-            color: isLightBg ? "rgba(0, 0, 0, 0.28)" : "rgba(255, 255, 255, 0.4)",
-            fontSize: 24,
+            color: isLightBg ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.65)",
+            fontSize: 36,
             letterSpacing: "0.02em",
-            fontWeight: 500,
+            fontWeight: 600,
           }}>
             {config.brandHandle}
           </div>
@@ -775,11 +775,11 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
           </div>
         )}
 
-        {/* Code card — when subtitles are on, live in the top 2/3 so the
-            bottom third is reserved for the TikTok-style caption band. */}
+        {/* Code card — when subtitles are on, lives in the bottom 2/3 so the
+            top third is free for the TikTok-style caption band. */}
         <div style={{
           position: "absolute",
-          top: config.subtitlesEnabled ? "33.33%" : "50%",
+          top: config.subtitlesEnabled ? "66.67%" : "50%",
           left: "50%",
           transform: `translate(-50%, -50%) scale(${introScale * codeCardScale})`,
           opacity: introOpacity,
@@ -1074,7 +1074,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
         const stroke = Math.max(0, s.strokeWidth);
         const positionStyle: React.CSSProperties = s.position === "center"
           ? { top: "50%", transform: "translateY(-50%)" }
-          : { bottom: 240 };
+          : { top: 120 };
         const bgRgba = s.bgEnabled ? hexToRgba(s.bgColor, s.bgOpacity) : "transparent";
         // -webkit-text-stroke is a single-pass GPU stroke — replaces 8-layer
         // text-shadow which was ~150-300ms/frame to rasterize in the export's

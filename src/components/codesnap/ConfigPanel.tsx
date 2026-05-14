@@ -996,10 +996,10 @@ const SubtitlesEditor: React.FC<{
           <Label className="font-mono text-xs tracking-wide text-muted-foreground">Posición</Label>
           <div className="flex gap-2">
             <button
-              onClick={() => setStyle({ position: "bottom" })}
-              className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${s.position === "bottom" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
+              onClick={() => setStyle({ position: "top" })}
+              className={`flex-1 py-2 font-mono text-xs brutal-border transition-colors ${s.position === "top" ? "bg-ink text-paper" : "bg-paper hover:bg-concrete"}`}
             >
-              Abajo (TikTok)
+              Arriba (primer tercio)
             </button>
             <button
               onClick={() => setStyle({ position: "center" })}

@@ -172,7 +172,7 @@ export interface SubtitleStyle {
   bgColor: string;
   bgOpacity: number;   // 0..1
   fontWeight: number;  // 400..900
-  position: "bottom" | "center";
+  position: "top" | "center";
 }
 
 export const DEFAULT_CODE = `# Función de ordenamiento rápido que devuelve una lista ordenada
@@ -236,10 +236,10 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   backgroundImageOverlay: 0,
   sfxEnabled: true,
   sfxVolume: 1.0,
-  bgMusicPreset: "butcha-boys",
+  bgMusicPreset: "midnight-buffering",
   bgMusicDataUrl: null,
   bgMusicName: null,
-  bgMusicVolume: 0.8,
+  bgMusicVolume: 0.1,
   bgMusicFadeOut: 2.0,
   audioDataUrl: null,
   audioName: null,
@@ -257,7 +257,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
     bgColor: "#000000",
     bgOpacity: 0.6,
     fontWeight: 800,
-    position: "bottom",
+    position: "top",
   },
 };
 
