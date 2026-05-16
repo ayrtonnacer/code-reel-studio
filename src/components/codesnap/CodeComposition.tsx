@@ -737,7 +737,7 @@ export const CodeComposition: React.FC<Props> = ({ config }) => {
               <div style={{
                 fontFamily: fontScale,
                 color: isLightBg ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.65)",
-                fontSize: 36,
+                fontSize: 46,
                 letterSpacing: "0.02em",
                 fontWeight: 600,
               }}>
