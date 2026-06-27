@@ -34,8 +34,9 @@ export const SFX_START_CLICK = '/sounds/mouse-click.mp3';
 // ─── Music Presets ────────────────────────────────────────────────────────────
 
 export const MUSIC_PRESETS = [
-  { key: 'can-you-hear-the-music', label: 'Can You Hear The Music', description: 'Default track'         },
-  { key: 'midnight-buffering',     label: 'Midnight Buffering',     description: 'Ambient electronic'    },
+  { key: 'american-beauty',        label: 'American Beauty',        description: 'Default track'          },
+  { key: 'can-you-hear-the-music', label: 'Can You Hear The Music', description: 'Ambient'                },
+  { key: 'midnight-buffering',     label: 'Midnight Buffering',     description: 'Ambient electronic'     },
   { key: 'butcha-boys',            label: 'Butcha Boys',            description: 'Hip-hop cinematic'      },
   { key: 'vaporwave',              label: 'Neon Drift',             description: 'Dreamy pads · 80 BPM'  },
   { key: 'chiptune',               label: 'Pixel Rush',             description: 'Retro 8-bit · 140 BPM' },
@@ -47,6 +48,7 @@ export type MusicPresetKey = typeof MUSIC_PRESETS[number]['key'];
 const _musicCache = new Map<MusicPresetKey, string>();
 
 export function getMusicPreset(key: MusicPresetKey): string {
+  if (key === 'american-beauty') return '/music/american-beauty.mp3';
   if (key === 'can-you-hear-the-music') return '/music/can-you-hear-the-music.mp3';
   if (key === 'midnight-buffering') return '/music/midnight-buffering.mp3';
   if (key === 'butcha-boys') return '/music/butcha-boys.mp3';
