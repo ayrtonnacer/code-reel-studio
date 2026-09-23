@@ -236,7 +236,7 @@ export const DEFAULT_CONFIG: SnippetConfig = {
   backgroundImageOverlay: 0,
   sfxEnabled: true,
   sfxVolume: 1.0,
-  bgMusicPreset: "american-beauty",
+  bgMusicPreset: "liquid-dnb",
   bgMusicDataUrl: null,
   bgMusicName: null,
   bgMusicVolume: 0.1,
