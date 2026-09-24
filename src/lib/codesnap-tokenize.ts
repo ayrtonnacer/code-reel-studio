@@ -2,6 +2,7 @@
 // Returns an array of { text, type } per logical token, preserving whitespace.
 
 import type { Language } from "./codesnap-types";
+import { findDocBlocks } from "./codesnap-triple-quotes";
 
 export type TokenType =
   | "comment"
@@ -71,6 +72,10 @@ export function tokenize(code: string, language: Language): Token[] {
   const keywords = new Set(KEYWORDS[language] ?? []);
   const lineComment = COMMENT_LINE[language];
   const blockComment = COMMENT_BLOCK[language];
+  // Python: los bloques """...""" standalone se pintan como comentario, con las
+  // comillas visibles (como en un editor de código).
+  const docBlocks = findDocBlocks(code, language);
+  let docIdx = 0;
 
   let i = 0;
   const push = (text: string, type: TokenType) => {
@@ -86,6 +91,14 @@ export function tokenize(code: string, language: Language): Token[] {
     if (wsMatch) {
       push(wsMatch[0], "plain");
       i += wsMatch[0].length;
+      continue;
+    }
+
+    while (docIdx < docBlocks.length && docBlocks[docIdx].startOffset < i) docIdx++;
+    if (docIdx < docBlocks.length && docBlocks[docIdx].startOffset === i) {
+      const { endOffset } = docBlocks[docIdx++];
+      push(code.slice(i, endOffset), "comment");
+      i = endOffset;
       continue;
     }
 

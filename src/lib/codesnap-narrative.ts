@@ -39,6 +39,7 @@ function stripCommentPrefix(line: string, lang: string): string {
 }
 
 import { splitNoWidow } from "@/lib/codesnap-types";
+import { docBlockLineSet } from "@/lib/codesnap-triple-quotes";
 
 /**
  * Returns the inline comment marker for a language ("#", "//", "--", etc.),
@@ -150,13 +151,19 @@ export function getCommentLinePrefix(lang: string): string {
 export function parseNarrative(code: string, lang: string): NarrativeInfo {
   const lines = code.split("\n");
 
+  // Líneas dentro de bloques """...""" (Python): se muestran tal cual, como
+  // código coloreado de comentario. No son comentarios `#` aunque una línea del
+  // bloque empiece con "#", y no cortan el bloque intro del principio.
+  const docLines = docBlockLineSet(code, lang);
+  const isComment = (idx: number) => !docLines.has(idx) && isCommentLine(lines[idx], lang);
+
   // Step 1 — find intro block: consecutive comment/blank lines at the very top
   const introLineIndices = new Set<number>();
   let i = 0;
   while (i < lines.length) {
     const t = lines[i].trim();
-    if (t === "") { i++; continue; }
-    if (isCommentLine(lines[i], lang)) { introLineIndices.add(i); i++; continue; }
+    if (t === "" || docLines.has(i)) { i++; continue; }
+    if (isComment(i)) { introLineIndices.add(i); i++; continue; }
     break; // first real code line
   }
 
@@ -167,12 +174,12 @@ export function parseNarrative(code: string, lang: string): NarrativeInfo {
 
   let j = i;
   while (j < lines.length) {
-    if (!isCommentLine(lines[j], lang)) { j++; continue; }
+    if (!isComment(j)) { j++; continue; }
 
     // Collect consecutive comment lines as one block
     const texts: string[] = [];
     const idxs: number[] = [];
-    while (j < lines.length && isCommentLine(lines[j], lang)) {
+    while (j < lines.length && isComment(j)) {
       texts.push(stripCommentPrefix(lines[j], lang));
       idxs.push(j);
       j++;
@@ -183,7 +190,7 @@ export function parseNarrative(code: string, lang: string): NarrativeInfo {
     while (nextCode < lines.length && lines[nextCode].trim() === "") nextCode++;
 
     // Associate with the next code line (not another comment)
-    if (nextCode < lines.length && !isCommentLine(lines[nextCode], lang)) {
+    if (nextCode < lines.length && !isComment(nextCode)) {
       const commentText = texts.filter(Boolean).join(" ");
       idxs.forEach((idx) => {
         narrativeLineIndices.add(idx);
