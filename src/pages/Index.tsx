@@ -3,8 +3,8 @@ import { CodeInput } from "@/components/codesnap/CodeInput";
 import { ConfigPanel } from "@/components/codesnap/ConfigPanel";
 import { PreviewPlayer } from "@/components/codesnap/PreviewPlayer";
 import { ExportDialog } from "@/components/codesnap/ExportDialog";
-import { DEFAULT_CONFIG, type SnippetConfig } from "@/lib/codesnap-types";
-import { normalizeTripleQuoteComments } from "@/lib/codesnap-triple-quotes";
+import { DEFAULT_CONFIG, VIDEO_WIDTH, type SnippetConfig } from "@/lib/codesnap-types";
+import { prepareRenderCode } from "@/lib/codesnap-triple-quotes";
 import { Film, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -15,13 +15,13 @@ const Index = () => {
   const update = (next: Partial<SnippetConfig>) =>
     setConfig((prev) => ({ ...prev, ...next }));
 
-  // The editor keeps exactly what the user typed; preview and export receive the
-  // code with Python triple-quote blocks converted to `#` comments so they get
-  // the same narrative / wrapping / highlighting treatment as regular comments.
+  // The editor keeps exactly what the user typed. Preview and export show Python
+  // triple-quote blocks as-is (with their `"""` visible, in comment color); the
+  // only change is that long lines inside them are wrapped to the card width.
   const renderConfig = useMemo<SnippetConfig>(
     () => ({
       ...config,
-      code: normalizeTripleQuoteComments(config.code, config.language),
+      code: prepareRenderCode(config, VIDEO_WIDTH),
     }),
     [config],
   );
