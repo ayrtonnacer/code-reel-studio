@@ -184,7 +184,7 @@ export function parseNarrative(code: string, lang: string): NarrativeInfo {
 
     // Associate with the next code line (not another comment)
     if (nextCode < lines.length && !isCommentLine(lines[nextCode], lang)) {
-      const commentText = texts.join(" ");
+      const commentText = texts.filter(Boolean).join(" ");
       idxs.forEach((idx) => {
         narrativeLineIndices.add(idx);
         narrativeByCommentLine.set(idx, nextCode);
