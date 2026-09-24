@@ -49,12 +49,40 @@ function commentLine(indent: string, text: string): string {
   return t ? `${indent}# ${t}` : `${indent}#`;
 }
 
+// Líneas que claramente son código Python (y no prosa de un comentario).
+const CODE_LINE_RE =
+  /^\s*(def|class|import|from|for|while|if|elif|else|try|except|finally|with|return|print|assert|raise)\b|^\s*[A-Za-z_][\w.]*\s*(=|\+=|-=)[^=]|^\s*[\w.]+\(.*\)\s*$|:\s*$/;
+
+/**
+ * Si el código empieza con prosa y luego hay UN solo delimitador triple solo en
+ * su línea (el usuario pegó el bloque sin la apertura), devuelve el código con
+ * la apertura agregada al inicio; si no, lo devuelve igual.
+ *
+ * Es conservador: solo aplica si hay un único delimitador en todo el archivo y
+ * ninguna línea anterior parece código, para no comentar código real.
+ */
+function addMissingOpener(code: string): string {
+  const lines = code.split(/\r?\n/);
+  for (const delim of ['"""', "'''"]) {
+    const other = delim === '"""' ? "'''" : '"""';
+    if (code.includes(other)) continue;
+    if (code.split(delim).length !== 2) continue; // exactamente 1 aparición
+    const k = lines.findIndex((l) => l.trim() === delim);
+    if (k <= 0) continue;
+    const before = lines.slice(0, k);
+    if (!before.some((l) => l.trim())) continue;
+    if (before.some((l) => CODE_LINE_RE.test(l))) continue;
+    return `${delim}\n${code}`;
+  }
+  return code;
+}
+
 export function normalizeTripleQuoteComments(code: string, language: string): string {
   if (language !== "python" || !code || (!code.includes('"""') && !code.includes("'''"))) {
     return code;
   }
 
-  const lines = code.split(/\r?\n/);
+  const lines = addMissingOpener(code).split(/\r?\n/);
   const out: string[] = [];
   let inString: string | null = null; // dentro de un string triple que NO es un bloque standalone
   let prevCode = ""; // última línea no vacía (ya procesada)
