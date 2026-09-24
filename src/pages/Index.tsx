@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CodeInput } from "@/components/codesnap/CodeInput";
 import { ConfigPanel } from "@/components/codesnap/ConfigPanel";
 import { PreviewPlayer } from "@/components/codesnap/PreviewPlayer";
 import { ExportDialog } from "@/components/codesnap/ExportDialog";
 import { DEFAULT_CONFIG, type SnippetConfig } from "@/lib/codesnap-types";
+import { normalizeTripleQuoteComments } from "@/lib/codesnap-triple-quotes";
 import { Film, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -14,12 +15,23 @@ const Index = () => {
   const update = (next: Partial<SnippetConfig>) =>
     setConfig((prev) => ({ ...prev, ...next }));
 
+  // The editor keeps exactly what the user typed; preview and export receive the
+  // code with Python triple-quote blocks converted to `#` comments so they get
+  // the same narrative / wrapping / highlighting treatment as regular comments.
+  const renderConfig = useMemo<SnippetConfig>(
+    () => ({
+      ...config,
+      code: normalizeTripleQuoteComments(config.code, config.language),
+    }),
+    [config],
+  );
+
   return (
     <div className="min-h-screen bg-paper text-ink">
       <ExportDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
-        config={config}
+        config={renderConfig}
       />
 
       {/* Header */}
@@ -67,7 +79,7 @@ const Index = () => {
               9:16
             </span>
           </div>
-          <PreviewPlayer config={config} paused={exportOpen} />
+          <PreviewPlayer config={renderConfig} paused={exportOpen} />
           <Button
             className="w-full brutal-border brutal-shadow bg-white text-black hover:bg-white/90 font-mono rounded-none"
             onClick={() => setExportOpen(true)}
