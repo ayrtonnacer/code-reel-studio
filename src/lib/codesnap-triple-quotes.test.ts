@@ -61,6 +61,20 @@ describe("normalizeTripleQuoteComments", () => {
     for (const u of untouched) expect(N(u, "python")).toBe(u);
   });
 
+  it("treats a closing delimiter with no opener as the end of a top-of-file comment", () => {
+    const pasted = USER_EXAMPLE.replace(/^"""\n/, "");
+    const out = N(pasted, "python").split("\n");
+    expect(out.slice(0, 8).every((l) => l.startsWith("#"))).toBe(true);
+    expect(out.slice(8)).toEqual(["edad = 25", "print(type(edad))"]);
+    expect(out.join("\n")).not.toContain('"""');
+    expect(parseNarrative(out.join("\n"), "python").introLineIndices.size).toBe(8);
+  });
+
+  it("does not comment out real code when a lone delimiter has no partner", () => {
+    const untouched = [`x = 1\n"""\nsin cierre`, `print(x)\n"""\ntexto`, `def f():\n    pass\n"""\nfin`];
+    for (const u of untouched) expect(N(u, "python")).toBe(u);
+  });
+
   it("only applies to python", () => {
     const js = `"""\nA\n"""`;
     expect(N(js, "javascript")).toBe(js);
